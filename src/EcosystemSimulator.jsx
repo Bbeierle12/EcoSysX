@@ -318,7 +318,52 @@ class EcosystemAnalytics {
     this.contactMatrix = new Map();
     this.decayRate = 0.05;
     
-    console.log(`📊 Analytics: Window=${windowSize} steps, Checkpoints every ${checkpointInterval} steps`);
+    // Console log capture for export
+    this.consoleLogs = [];
+    this.maxLogEntries = 1000;
+    this.captureConsoleLogs();
+    
+    console.log(`📊 EcoSysX Analytics: Window=${windowSize} steps, Checkpoints every ${checkpointInterval} steps`);
+    console.log(`📁 Export target: C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics\\`);
+  }
+
+  captureConsoleLogs() {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    
+    console.log = (...args) => {
+      this.addLogEntry('LOG', args);
+      originalLog.apply(console, args);
+    };
+    
+    console.warn = (...args) => {
+      this.addLogEntry('WARN', args);
+      originalWarn.apply(console, args);
+    };
+    
+    console.error = (...args) => {
+      this.addLogEntry('ERROR', args);
+      originalError.apply(console, args);
+    };
+  }
+
+  addLogEntry(level, args) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      level,
+      step: this.currentStep,
+      message: args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+      ).join(' ')
+    };
+    
+    this.consoleLogs.push(entry);
+    
+    // Keep only recent entries to prevent memory issues
+    if (this.consoleLogs.length > this.maxLogEntries) {
+      this.consoleLogs.shift();
+    }
   }
 
   resetWindow() {
@@ -463,6 +508,11 @@ class EcosystemAnalytics {
       this.windowHistory.shift();
     }
     
+    // Auto-export every 1000 steps or 10 windows
+    if (this.currentStep % 1000 === 0 || this.windowHistory.length % 10 === 0) {
+      this.autoExportLogs();
+    }
+    
     // Log compact window summary
     if (this.currentStep % 500 === 0) {
       console.log(`📈 Window [${this.windowStart}-${this.currentStep}]:`, 
@@ -472,6 +522,42 @@ class EcosystemAnalytics {
         `Contacts=${Object.values(windowSummary.contacts).reduce((a,b) => a + b, 0)}`
       );
     }
+    
+    this.resetWindow();
+  }
+
+  autoExportLogs() {
+    console.log(`🔄 Auto-exporting EcoSysX logs at step ${this.currentStep}`);
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const quickExport = {
+      metadata: {
+        auto_export: true,
+        step: this.currentStep,
+        timestamp: new Date().toISOString(),
+        target_folder: 'C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics'
+      },
+      console_logs: this.consoleLogs.slice(-200), // Last 200 log entries
+      recent_windows: this.windowHistory.slice(-5), // Last 5 windows
+      summary: {
+        total_logs: this.consoleLogs.length,
+        total_windows: this.windowHistory.length,
+        panel_size: this.panelSample.size
+      }
+    };
+    
+    // Export lightweight log file
+    const filename = `EcoSysX-AutoLog-Step${this.currentStep}-${timestamp}.json`;
+    const content = JSON.stringify(quickExport, null, 2);
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    console.log(`📁 Auto-exported: ${filename}`);
   }
 
   summarizePopulation(agents) {
@@ -569,32 +655,149 @@ class EcosystemAnalytics {
   }
 
   exportAnalytics() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const export_data = {
       metadata: {
         current_step: this.currentStep,
         window_size: this.windowSize,
         checkpoint_interval: this.checkpointInterval,
-        export_timestamp: new Date().toISOString()
+        export_timestamp: new Date().toISOString(),
+        session_id: `ecosysx_${timestamp}`,
+        export_location: 'C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics'
+      },
+      simulation_summary: {
+        total_steps: this.currentStep,
+        total_windows: this.windowHistory.length,
+        total_checkpoints: this.checkpoints.length,
+        panel_agents: this.panelSample.size,
+        contact_matrix_entries: this.contactMatrix.size
       },
       recent_windows: this.windowHistory,
       checkpoints: this.checkpoints,
-      panel_sample: Array.from(this.panelSample.values())
+      panel_sample: Array.from(this.panelSample.values()),
+      contact_matrix: Array.from(this.contactMatrix.entries()),
+      console_logs: this.consoleLogs || []
     };
     
-    console.log('=== LEAN ANALYTICS EXPORT ===');
+    console.log('=== 📊 ECOSYSX ANALYTICS EXPORT ===');
+    console.log(`📁 Target: C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics\\`);
+    console.log(`📊 Session: ${export_data.metadata.session_id}`);
+    console.log(`⏱️  Steps: ${this.currentStep} | Windows: ${this.windowHistory.length} | Checkpoints: ${this.checkpoints.length}`);
     console.log(JSON.stringify(export_data, null, 2));
-    console.log('=== END ANALYTICS EXPORT ===');
+    console.log('=== END ECOSYSX ANALYTICS EXPORT ===');
     
-    // Download as JSON file
+    // Create comprehensive filename for EcoSysX Analytics folder
+    const filename = `EcoSysX-Analytics-Step${this.currentStep}-${timestamp}.json`;
+    
+    // Download as JSON file (will go to default Downloads, user can move to EcoSysX Analytics folder)
     const blob = new Blob([JSON.stringify(export_data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ecosystem-analytics-step-${this.currentStep}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
     
+    // Also export detailed CSV reports
+    this.exportDetailedReports(timestamp);
+    
     return export_data;
+  }
+
+  exportDetailedReports(timestamp) {
+    // Export agent lifecycle report
+    if (this.panelSample.size > 0) {
+      const agents_csv = this.generateAgentLifecycleCSV();
+      this.downloadFile(agents_csv, `EcoSysX-Agents-${timestamp}.csv`, 'text/csv');
+    }
+    
+    // Export population dynamics report
+    if (this.windowHistory.length > 0) {
+      const population_csv = this.generatePopulationDynamicsCSV();
+      this.downloadFile(population_csv, `EcoSysX-Population-${timestamp}.csv`, 'text/csv');
+    }
+    
+    // Export epidemiological report
+    const epi_csv = this.generateEpidemiologicalCSV();
+    this.downloadFile(epi_csv, `EcoSysX-Epidemiology-${timestamp}.csv`, 'text/csv');
+    
+    console.log('📊 Exported detailed reports: Agents, Population, Epidemiology');
+  }
+
+  downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  generateAgentLifecycleCSV() {
+    const headers = ['Agent_ID', 'Agent_Type', 'Birth_Step', 'Current_Age', 'Energy', 'Status', 'Infections_Caused', 'Contacts'];
+    const rows = [headers.join(',')];
+    
+    this.panelSample.forEach(agent => {
+      const infections = this.windowData.infections_caused.get(agent.id) || 0;
+      const contacts = Array.from(this.contactMatrix.entries())
+        .filter(([key, value]) => key.includes(agent.id)).length;
+      
+      rows.push([
+        agent.id,
+        agent.constructor.name || 'Agent',
+        agent.birth_step || 0,
+        agent.age || 0,
+        agent.energy || 0,
+        agent.status || 'Unknown',
+        infections,
+        contacts
+      ].join(','));
+    });
+    
+    return rows.join('\n');
+  }
+
+  generatePopulationDynamicsCSV() {
+    const headers = ['Window_Start', 'Window_End', 'Susceptible', 'Infected', 'Recovered', 'Total_Births', 'Total_Deaths', 'Avg_Energy'];
+    const rows = [headers.join(',')];
+    
+    this.windowHistory.forEach((window, index) => {
+      const births = Array.from(window.births_by_type.values()).reduce((sum, count) => sum + count, 0);
+      const deaths = Array.from(window.deaths_by_cause.values()).reduce((sum, count) => sum + count, 0);
+      const avgEnergy = window.avg_energy || 0;
+      
+      rows.push([
+        window.step_start || (index * this.windowSize),
+        window.step_end || ((index + 1) * this.windowSize),
+        window.susceptible || 0,
+        window.infected || 0,
+        window.recovered || 0,
+        births,
+        deaths,
+        avgEnergy
+      ].join(','));
+    });
+    
+    return rows.join('\n');
+  }
+
+  generateEpidemiologicalCSV() {
+    const headers = ['Metric', 'Value', 'Description'];
+    const rows = [headers.join(',')];
+    
+    // Calculate R0 and other epi metrics
+    const totalInfections = Array.from(this.windowData.infections_caused.values()).reduce((sum, count) => sum + count, 0);
+    const totalInfectious = this.panelSample.size > 0 ? 
+      Array.from(this.panelSample.values()).filter(a => a.status === 'Infected').length : 0;
+    
+    rows.push(['Total_Infections', totalInfections, 'Total infections caused this session']);
+    rows.push(['Current_Infectious', totalInfectious, 'Currently infectious agents']);
+    rows.push(['Contact_Matrix_Size', this.contactMatrix.size, 'Unique agent-agent contacts recorded']);
+    rows.push(['Panel_Sample_Size', this.panelSample.size, 'Agents in longitudinal panel']);
+    rows.push(['Resources_Consumed', this.windowData.resources_consumed || 0, 'Total resources consumed']);
+    
+    return rows.join('\n');
   }
 
   // Calculate key epidemiological metrics
@@ -626,6 +829,7 @@ class Agent {
     this.genotype = genotype || this.generateRandomGenotype();
     this.phenotype = this.expressPhenotype();
     this.age = 0;
+    console.log(`Agent ${id} created with age: ${this.age}`); // DEBUG
     this.energy = 100;
     this.status = 'Susceptible';
     this.infectionTimer = 0;
@@ -892,6 +1096,8 @@ class Agent {
       },
       newGenotype
     );
+    
+    console.log(`Offspring ${offspring.id} born with age: ${offspring.age}`); // DEBUG
     
     this.reproductionCooldown = 60;
     this.energy -= 15;
@@ -1609,6 +1815,10 @@ const EcosystemSimulator = () => {
     // Make analytics globally available for agents
     if (typeof window !== 'undefined') {
       window.ecosystemAnalytics = analyticsRef.current;
+      console.log('🚀 EcoSysX Analytics System Initialized');
+      console.log('📁 Auto-exports will be saved to: C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics\\');
+      console.log('🔄 Auto-export triggers: Every 1000 steps OR every 10 windows');
+      console.log('📊 Manual export: Click "Export to EcoSysX Analytics" button');
     }
   }
   
@@ -1791,7 +2001,10 @@ const EcosystemSimulator = () => {
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      preserveDrawingBuffer: true  // Essential for screenshots
+    });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1851,6 +2064,10 @@ const EcosystemSimulator = () => {
           agent.status = 'Infected';
           agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
         }
+        
+        // Ensure age is 0 (should be from constructor but let's be explicit)
+        agent.age = 0;
+        console.log(`Created initial agent ${agent.id} with age ${agent.age}`); // DEBUG
         
         createAgentMesh(agent, scene);
         initialAgents.push(agent);
@@ -2140,6 +2357,8 @@ const EcosystemSimulator = () => {
       const infected = newAgents.filter(a => a.status === 'Infected').length;
       const recovered = newAgents.filter(a => a.status === 'Recovered').length;
       const totalAge = newAgents.reduce((sum, a) => sum + a.age, 0);
+      console.log(`Step ${step}: Agent ages:`, newAgents.map(a => `${a.id}:${a.age}`).slice(0, 5)); // DEBUG first 5
+      console.log(`Step ${step}: Total age: ${totalAge}, Avg age: ${Math.round(totalAge / newAgents.length)}, Count: ${newAgents.length}`); // DEBUG
       const totalEnergy = newAgents.reduce((sum, a) => sum + a.energy, 0);
       const causalAgents = newAgents.filter(a => a instanceof CausalAgent).length;
       const rlAgents = newAgents.filter(a => !(a instanceof CausalAgent)).length;
@@ -2216,7 +2435,48 @@ const EcosystemSimulator = () => {
     return () => clearInterval(interval);
   }, [isRunning, simulationStep]);
 
+  // Screenshot function
+  const takeScreenshot = useCallback(() => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+      console.warn('Renderer not available for screenshot');
+      return;
+    }
+    
+    try {
+      // Ensure renderer has preserveDrawingBuffer enabled
+      const canvas = rendererRef.current.domElement;
+      
+      // Force a render to make sure canvas is up to date
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      
+      // Convert canvas to data URL
+      const dataURL = canvas.toDataURL('image/png', 1.0);
+      
+      if (dataURL === 'data:,' || dataURL.length < 100) {
+        throw new Error('Canvas data is empty or corrupted');
+      }
+      
+      // Create download link
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      link.download = `ecosystem-screenshot-step-${step}-${timestamp}.png`;
+      link.href = dataURL;
+      link.style.display = 'none';
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log(`📸 Screenshot saved at step ${step}`);
+    } catch (error) {
+      console.error('Screenshot failed:', error);
+      alert('Screenshot failed: ' + error.message);
+    }
+  }, [step]);
+
   const resetSimulation = () => {
+    console.log('🔄 Resetting simulation...'); // DEBUG
     setIsRunning(false);
     setStep(0);
     setPopulationHistory([]);
@@ -2224,7 +2484,9 @@ const EcosystemSimulator = () => {
     setPlayerStats(null);
     
     // Clear existing agent meshes
+    console.log(`Clearing ${agents.length} existing agents`); // DEBUG
     agents.forEach(agent => {
+      console.log(`Clearing agent ${agent.id} with age ${agent.age}`); // DEBUG
       if (agent.mesh && sceneRef.current) {
         sceneRef.current.remove(agent.mesh);
         agent.mesh = null;
@@ -2279,10 +2541,15 @@ const EcosystemSimulator = () => {
         agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
       }
       
+      // Ensure age is 0 (it should be from constructor but let's be explicit)
+      agent.age = 0;
+      console.log(`Created reset agent ${agent.id} with age ${agent.age}`); // DEBUG
+      
       createAgentMesh(agent, sceneRef.current);
       newAgents.push(agent);
     }
     
+    console.log(`🔄 Reset complete: ${newAgents.length} new agents created`); // DEBUG
     setAgents(newAgents);
     
     if (sceneRef.current) {
@@ -2397,6 +2664,13 @@ const EcosystemSimulator = () => {
             >
               📷 {cameraMode === 'overview' ? 'Follow Agent' : 'Overview'}
             </button>
+            <button
+              onClick={takeScreenshot}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded ml-2"
+              title="Take a screenshot of the current simulation view"
+            >
+              📸 Screenshot
+            </button>
           </div>
           
           {/* Analysis Controls */}
@@ -2404,9 +2678,9 @@ const EcosystemSimulator = () => {
             <button
               onClick={() => analyticsRef.current?.exportAnalytics()}
               className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-sm mr-2"
-              title="Export lean windowed analytics (optimized for analysis)"
+              title="Export comprehensive EcoSysX logs to Downloads/EcoSysX Analytics folder"
             >
-              📊 Export Analytics
+              📊 Export to EcoSysX Analytics
             </button>
             <button
               onClick={exportSimulationState}
@@ -2441,7 +2715,7 @@ const EcosystemSimulator = () => {
             <p>• <strong>Click Agent:</strong> View reasoning details</p>
             <p>• <strong>Right Drag:</strong> Rotate camera</p>
             <p>• <strong>Scroll:</strong> Zoom in/out</p>
-            <p>• <strong>Export Analytics:</strong> Lean windowed data for analysis</p>
+            <p>• <strong>Export to EcoSysX Analytics:</strong> Comprehensive logs and CSV reports exported to C:\Users\Bbeie\Downloads\EcoSysX Analytics\</p>
             <p>• <strong>Export Snapshot:</strong> Full current state</p>
             <p>• <strong className="text-yellow-300">Gold agents:</strong> Advanced AI reasoning</p>
             <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
