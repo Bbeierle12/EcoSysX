@@ -322,9 +322,103 @@ class EcosystemAnalytics {
     this.consoleLogs = [];
     this.maxLogEntries = 1000;
     this.captureConsoleLogs();
+
+    // Export folder selection
+    this.exportDirectoryHandle = null;
+    this.requestingDirectoryHandle = false;
+    this.exportDirectoryLabel = 'Default Downloads Folder';
+    this.customExportPath = null;
     
     console.log(`📊 EcoSysX Analytics: Window=${windowSize} steps, Checkpoints every ${checkpointInterval} steps`);
-    console.log(`📁 Export target: C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics\\`);
+    console.log(`📁 Export target: ${this.exportDirectoryLabel}`);
+  }
+
+  // Folder selection methods
+  async selectExportFolder() {
+    try {
+      console.log('📂 Opening folder selection dialog...');
+      
+      // Check if File System Access API is supported
+      if ('showDirectoryPicker' in window) {
+        this.requestingDirectoryHandle = true;
+        const directoryHandle = await window.showDirectoryPicker({
+          mode: 'readwrite',
+          startIn: 'downloads'
+        });
+        
+        this.exportDirectoryHandle = directoryHandle;
+        this.exportDirectoryLabel = directoryHandle.name;
+        this.customExportPath = directoryHandle;
+        
+        // Update React state if callback is available
+        if (this.updateUICallback) {
+          this.updateUICallback(this.exportDirectoryLabel);
+        }
+        
+        console.log(`✅ Selected export folder: ${this.exportDirectoryLabel}`);
+        return {
+          success: true,
+          folder: this.exportDirectoryLabel,
+          handle: directoryHandle
+        };
+      } else {
+        // Fallback for browsers without File System Access API
+        console.warn('⚠️ File System Access API not supported');
+        return this.promptForCustomPath();
+      }
+    } catch (error) {
+      console.error('❌ Folder selection failed:', error);
+      if (error.name === 'AbortError') {
+        console.log('📂 Folder selection cancelled by user');
+      }
+      return { success: false, error: error.message };
+    } finally {
+      this.requestingDirectoryHandle = false;
+    }
+  }
+
+  promptForCustomPath() {
+    const customPath = prompt(
+      'Enter your preferred export folder path:\n(e.g., C:\\Users\\YourName\\Documents\\EcoSysX Analytics)',
+      'C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics'
+    );
+    
+    if (customPath && customPath.trim()) {
+      this.customExportPath = customPath.trim();
+      this.exportDirectoryLabel = customPath.trim();
+      
+      // Update React state if callback is available
+      if (this.updateUICallback) {
+        this.updateUICallback(this.exportDirectoryLabel);
+      }
+      
+      console.log(`📁 Custom export path set: ${this.exportDirectoryLabel}`);
+      return { success: true, folder: this.exportDirectoryLabel };
+    }
+    
+    return { success: false, error: 'No path provided' };
+  }
+
+  resetExportFolder() {
+    this.exportDirectoryHandle = null;
+    this.customExportPath = null;
+    this.exportDirectoryLabel = 'Default Downloads';
+    
+    // Update React state if callback is available
+    if (this.updateUICallback) {
+      this.updateUICallback(this.exportDirectoryLabel);
+    }
+    
+    console.log('🔄 Reset to default export location');
+  }
+
+  // Set callback to update React UI
+  setUIUpdateCallback(callback) {
+    this.updateUICallback = callback;
+  }
+
+  setDebugCallback(callback) {
+    this.debugCallback = callback;
   }
 
   captureConsoleLogs() {
@@ -348,22 +442,143 @@ class EcosystemAnalytics {
     };
   }
 
-  addLogEntry(level, args) {
-    const entry = {
-      timestamp: new Date().toISOString(),
-      level,
-      step: this.currentStep,
-      message: args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ')
-    };
-    
-    this.consoleLogs.push(entry);
-    
-    // Keep only recent entries to prevent memory issues
-    if (this.consoleLogs.length > this.maxLogEntries) {
-      this.consoleLogs.shift();
+  async promptForExportDirectory() {
+    if (typeof window === 'undefined' || !window.showDirectoryPicker) {
+      console.warn('[EcoSysX] File System Access API not available; using browser downloads.');
+      return false;
     }
+
+    if (this.requestingDirectoryHandle) {
+      console.warn('[EcoSysX] Directory request already in progress.');
+      return false;
+    }
+
+    this.requestingDirectoryHandle = true;
+
+    try {
+      const directoryHandle = await window.showDirectoryPicker({
+        id: 'ecosysx-analytics',
+        mode: 'readwrite',
+        startIn: 'downloads'
+      });
+
+      let targetHandle = directoryHandle;
+
+      try {
+        if (directoryHandle.name && directoryHandle.name.toLowerCase() !== 'ecosysx analytics') {
+          targetHandle = await directoryHandle.getDirectoryHandle('EcoSysX Analytics', { create: true });
+        }
+      } catch (error) {
+        console.warn('[EcoSysX] Unable to create EcoSysX Analytics subdirectory; using the selected folder.', error);
+      }
+
+      this.exportDirectoryHandle = targetHandle;
+      console.log(`[EcoSysX] Analytics directory ready at ${this.exportDirectoryLabel}`);
+      return true;
+    } catch (error) {
+      console.warn('[EcoSysX] Directory selection was cancelled or failed.', error);
+      return false;
+    } finally {
+      this.requestingDirectoryHandle = false;
+    }
+  }
+
+  hasExportDirectory() {
+    return !!this.exportDirectoryHandle;
+  }
+
+  async saveFile({ contents, filename, type }) {
+    if (this.exportDirectoryHandle) {
+      try {
+        const fileHandle = await this.exportDirectoryHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(contents);
+        await writable.close();
+        return { saved: true, method: 'filesystem' };
+      } catch (error) {
+        console.error('[EcoSysX] Failed to write to analytics directory; falling back to browser download.', error);
+      }
+    }
+
+    this.triggerBrowserDownload(contents, filename, type);
+    return { saved: false, method: 'download' };
+  }
+
+  triggerBrowserDownload(contents, filename, type) {
+    const blob = new Blob([contents], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  addLogEntry(level, args) {
+    try {
+      const entry = {
+        timestamp: new Date().toISOString(),
+        level,
+        step: this.currentStep,
+        message: args.map(arg => {
+          if (typeof arg === 'object') {
+            try {
+              return JSON.stringify(arg);
+            } catch (e) {
+              // Handle circular references or other JSON.stringify errors
+              return `[Object: ${arg?.constructor?.name || 'Unknown'}]`;
+            }
+          }
+          return String(arg);
+        }).join(' ')
+      };
+      
+      this.consoleLogs.push(entry);
+      
+      // Send to debug callback if available
+      if (this.debugCallback) {
+        this.debugCallback(entry);
+      }
+      
+      // Keep only recent entries to prevent memory issues
+      if (this.consoleLogs.length > this.maxLogEntries) {
+        this.consoleLogs.shift();
+      }
+    } catch (error) {
+      // If logging fails, don't break the application
+      console.warn('[Analytics] Failed to capture log entry:', error);
+    }
+  }
+
+  safeSerializeAgents(agents) {
+    return agents.map(agent => {
+      try {
+        // Create a safe copy of agent data without circular references
+        return {
+          id: agent.id,
+          age: agent.age,
+          energy: agent.energy,
+          status: agent.status,
+          position: agent.position ? {
+            x: agent.position.x,
+            y: agent.position.y,
+            z: agent.position.z
+          } : null,
+          genotype: agent.genotype || {},
+          phenotype: agent.phenotype || {},
+          maxLifespan: agent.maxLifespan,
+          reproductionCooldown: agent.reproductionCooldown,
+          constructor_name: agent.constructor.name
+        };
+      } catch (error) {
+        console.warn(`Failed to serialize agent ${agent?.id || 'unknown'}:`, error);
+        return {
+          id: agent?.id || 'unknown',
+          error: 'Serialization failed',
+          constructor_name: agent?.constructor?.name || 'Unknown'
+        };
+      }
+    });
   }
 
   resetWindow() {
@@ -527,37 +742,41 @@ class EcosystemAnalytics {
   }
 
   autoExportLogs() {
-    console.log(`🔄 Auto-exporting EcoSysX logs at step ${this.currentStep}`);
-    
+    console.log(`[EcoSysX] Auto-exporting EcoSysX logs at step ${this.currentStep}`);
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const quickExport = {
       metadata: {
         auto_export: true,
         step: this.currentStep,
         timestamp: new Date().toISOString(),
-        target_folder: 'C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics'
+        target_folder: this.exportDirectoryLabel
       },
-      console_logs: this.consoleLogs.slice(-200), // Last 200 log entries
-      recent_windows: this.windowHistory.slice(-5), // Last 5 windows
+      console_logs: this.consoleLogs.slice(-200),
+      recent_windows: this.windowHistory.slice(-5),
       summary: {
         total_logs: this.consoleLogs.length,
         total_windows: this.windowHistory.length,
         panel_size: this.panelSample.size
       }
     };
-    
-    // Export lightweight log file
+
     const filename = `EcoSysX-AutoLog-Step${this.currentStep}-${timestamp}.json`;
     const content = JSON.stringify(quickExport, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    console.log(`📁 Auto-exported: ${filename}`);
+
+    this.saveFile({
+      contents: content,
+      filename,
+      type: 'application/json'
+    }).then(result => {
+      if (result && result.saved) {
+        console.log(`[EcoSysX] Auto-exported to ${this.exportDirectoryLabel}\\${filename}`);
+      } else {
+        console.log(`[EcoSysX] Auto-exported via browser download: ${filename}`);
+      }
+    }).catch(error => {
+      console.error('[EcoSysX] Auto-export failed.', error);
+    });
   }
 
   summarizePopulation(agents) {
@@ -631,7 +850,7 @@ class EcosystemAnalytics {
       checkpoint_step: this.currentStep,
       population_total: agents.length,
       window_count: this.windowHistory.length,
-      panel_sample: Array.from(this.panelSample.values()),
+      panel_sample: this.panelSample ? Array.from(this.panelSample.values()) : [],
       recent_windows: this.windowHistory.slice(-5), // Last 5 windows for context
       performance: {
         fps: stats.fps || 0,
@@ -654,84 +873,140 @@ class EcosystemAnalytics {
       `${checkpoint.performance.memory_mb}MB memory`);
   }
 
-  exportAnalytics() {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const export_data = {
-      metadata: {
-        current_step: this.currentStep,
-        window_size: this.windowSize,
-        checkpoint_interval: this.checkpointInterval,
-        export_timestamp: new Date().toISOString(),
-        session_id: `ecosysx_${timestamp}`,
-        export_location: 'C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics'
-      },
-      simulation_summary: {
-        total_steps: this.currentStep,
-        total_windows: this.windowHistory.length,
-        total_checkpoints: this.checkpoints.length,
-        panel_agents: this.panelSample.size,
-        contact_matrix_entries: this.contactMatrix.size
-      },
-      recent_windows: this.windowHistory,
-      checkpoints: this.checkpoints,
-      panel_sample: Array.from(this.panelSample.values()),
-      contact_matrix: Array.from(this.contactMatrix.entries()),
-      console_logs: this.consoleLogs || []
-    };
-    
-    console.log('=== 📊 ECOSYSX ANALYTICS EXPORT ===');
-    console.log(`📁 Target: C:\\Users\\Bbeie\\Downloads\\EcoSysX Analytics\\`);
-    console.log(`📊 Session: ${export_data.metadata.session_id}`);
-    console.log(`⏱️  Steps: ${this.currentStep} | Windows: ${this.windowHistory.length} | Checkpoints: ${this.checkpoints.length}`);
-    console.log(JSON.stringify(export_data, null, 2));
-    console.log('=== END ECOSYSX ANALYTICS EXPORT ===');
-    
-    // Create comprehensive filename for EcoSysX Analytics folder
-    const filename = `EcoSysX-Analytics-Step${this.currentStep}-${timestamp}.json`;
-    
-    // Download as JSON file (will go to default Downloads, user can move to EcoSysX Analytics folder)
-    const blob = new Blob([JSON.stringify(export_data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    // Also export detailed CSV reports
-    this.exportDetailedReports(timestamp);
-    
-    return export_data;
+  async exportAnalytics() {
+    try {
+      console.log('📊 [Export] Starting analytics export...');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      const export_data = {
+        metadata: {
+          current_step: this.currentStep,
+          window_size: this.windowSize,
+          checkpoint_interval: this.checkpointInterval,
+          export_timestamp: new Date().toISOString(),
+          session_id: `ecosysx_${timestamp}`,
+          export_location: this.exportDirectoryLabel
+        },
+        simulation_summary: {
+          total_steps: this.currentStep,
+          total_windows: this.windowHistory.length,
+          total_checkpoints: this.checkpoints.length,
+          panel_agents: this.panelSample ? this.panelSample.size : 0,
+          contact_matrix_entries: this.contactMatrix ? this.contactMatrix.size : 0
+        },
+        recent_windows: this.windowHistory || [],
+        checkpoints: this.checkpoints || [],
+        panel_sample: this.panelSample ? this.safeSerializeAgents(Array.from(this.panelSample.values())) : [],
+        contact_matrix: this.contactMatrix ? Array.from(this.contactMatrix.entries()) : [],
+        console_logs: this.consoleLogs || []
+      };
+
+      console.log('=== ECOSYSX ANALYTICS EXPORT ===');
+      console.log(`[EcoSysX] Target: ${this.exportDirectoryLabel}`);
+      console.log(`[EcoSysX] Session: ${export_data.metadata.session_id}`);
+      console.log(`[EcoSysX] Steps: ${this.currentStep} | Windows: ${this.windowHistory.length} | Checkpoints: ${this.checkpoints.length}`);
+      console.log('=== END ECOSYSX ANALYTICS EXPORT ===');
+
+      const filename = `EcoSysX-Analytics-Step${this.currentStep}-${timestamp}.json`;
+      
+      // Safe JSON serialization with circular reference handling
+      let content;
+      try {
+        content = JSON.stringify(export_data, (key, value) => {
+          // Handle circular references and problematic objects
+          if (typeof value === 'object' && value !== null) {
+            if (value.constructor && value.constructor.name === 'Agent') {
+              return '[Agent Object]';
+            }
+            if (value instanceof HTMLElement) {
+              return '[HTML Element]';
+            }
+            if (value instanceof Function) {
+              return '[Function]';
+            }
+          }
+          return value;
+        }, 2);
+      } catch (jsonError) {
+        console.error('📊 [Export] JSON serialization failed, using fallback:', jsonError);
+        content = JSON.stringify({
+          error: 'Serialization failed',
+          message: jsonError.message,
+          metadata: export_data.metadata,
+          simulation_summary: export_data.simulation_summary
+        }, null, 2);
+      }
+      
+      console.log('📊 [Export] Saving main analytics file...');
+      const result = await this.saveFile({
+        contents: content,
+        filename,
+        type: 'application/json'
+      });
+
+      if (result && result.saved) {
+        console.log(`[EcoSysX] Exported analytics to ${this.exportDirectoryLabel}\\${filename}`);
+      } else {
+        console.log(`[EcoSysX] Exported analytics via browser download: ${filename}`);
+      }
+
+      console.log('📊 [Export] Exporting detailed reports...');
+      await this.exportDetailedReports(timestamp);
+      
+      console.log('📊 [Export] Analytics export completed successfully!');
+      return export_data;
+      
+    } catch (error) {
+      console.error('📊 [Export] Analytics export failed:', error);
+      throw error;
+    }
   }
 
-  exportDetailedReports(timestamp) {
-    // Export agent lifecycle report
-    if (this.panelSample.size > 0) {
-      const agents_csv = this.generateAgentLifecycleCSV();
-      this.downloadFile(agents_csv, `EcoSysX-Agents-${timestamp}.csv`, 'text/csv');
+  async exportDetailedReports(timestamp) {
+    try {
+      console.log('📊 [Export] Starting detailed reports export...');
+      const results = [];
+
+      if (this.panelSample.size > 0) {
+        console.log('📊 [Export] Generating agent lifecycle CSV...');
+        const agents_csv = this.generateAgentLifecycleCSV();
+        results.push(await this.downloadFile(agents_csv, `EcoSysX-Agents-${timestamp}.csv`, 'text/csv'));
+      }
+
+      if (this.windowHistory.length > 0) {
+        console.log('📊 [Export] Generating population dynamics CSV...');
+        const population_csv = this.generatePopulationDynamicsCSV();
+        results.push(await this.downloadFile(population_csv, `EcoSysX-Population-${timestamp}.csv`, 'text/csv'));
+      }
+
+      console.log('📊 [Export] Generating epidemiology CSV...');
+      const epi_csv = this.generateEpidemiologicalCSV();
+      results.push(await this.downloadFile(epi_csv, `EcoSysX-Epidemiology-${timestamp}.csv`, 'text/csv'));
+
+      const savedToDirectory = results.some(result => result && result.saved);
+      if (results.length) {
+        if (savedToDirectory) {
+          console.log(`[EcoSysX] Exported detailed reports to ${this.exportDirectoryLabel}`);
+        } else {
+          console.log('[EcoSysX] Exported detailed reports via browser download.');
+        }
+      }
+      
+      console.log('📊 [Export] Detailed reports export completed!');
+      return results;
+      
+    } catch (error) {
+      console.error('📊 [Export] Detailed reports export failed:', error);
+      throw error;
     }
-    
-    // Export population dynamics report
-    if (this.windowHistory.length > 0) {
-      const population_csv = this.generatePopulationDynamicsCSV();
-      this.downloadFile(population_csv, `EcoSysX-Population-${timestamp}.csv`, 'text/csv');
-    }
-    
-    // Export epidemiological report
-    const epi_csv = this.generateEpidemiologicalCSV();
-    this.downloadFile(epi_csv, `EcoSysX-Epidemiology-${timestamp}.csv`, 'text/csv');
-    
-    console.log('📊 Exported detailed reports: Agents, Population, Epidemiology');
   }
 
-  downloadFile(content, filename, type) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+  async downloadFile(content, filename, type) {
+    return this.saveFile({
+      contents: content,
+      filename,
+      type
+    });
   }
 
   generateAgentLifecycleCSV() {
@@ -763,8 +1038,8 @@ class EcosystemAnalytics {
     const rows = [headers.join(',')];
     
     this.windowHistory.forEach((window, index) => {
-      const births = Array.from(window.births_by_type.values()).reduce((sum, count) => sum + count, 0);
-      const deaths = Array.from(window.deaths_by_cause.values()).reduce((sum, count) => sum + count, 0);
+      const births = window.births_by_type ? Array.from(window.births_by_type.values()).reduce((sum, count) => sum + count, 0) : 0;
+      const deaths = window.deaths_by_cause ? Array.from(window.deaths_by_cause.values()).reduce((sum, count) => sum + count, 0) : 0;
       const avgEnergy = window.avg_energy || 0;
       
       rows.push([
@@ -787,8 +1062,9 @@ class EcosystemAnalytics {
     const rows = [headers.join(',')];
     
     // Calculate R0 and other epi metrics
-    const totalInfections = Array.from(this.windowData.infections_caused.values()).reduce((sum, count) => sum + count, 0);
-    const totalInfectious = this.panelSample.size > 0 ? 
+    const totalInfections = this.windowData && this.windowData.infections_caused ? 
+      Array.from(this.windowData.infections_caused.values()).reduce((sum, count) => sum + count, 0) : 0;
+    const totalInfectious = this.panelSample && this.panelSample.size > 0 ? 
       Array.from(this.panelSample.values()).filter(a => a.status === 'Infected').length : 0;
     
     rows.push(['Total_Infections', totalInfections, 'Total infections caused this session']);
@@ -1802,6 +2078,9 @@ const EcosystemSimulator = () => {
   const [populationHistory, setPopulationHistory] = useState([]);
   const [notification, setNotification] = useState(null);
   const [performanceData, setPerformanceData] = useState({ memory: 0, fps: 0, lastTime: 0 });
+  const [exportFolderLabel, setExportFolderLabel] = useState('Default Downloads');
+  const [showDebugConsole, setShowDebugConsole] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
   const [llmConfig, setLLMConfig] = useState({
     enabled: false,
     ollamaStatus: 'checking', // 'checking', 'connected', 'disconnected'
@@ -1820,7 +2099,73 @@ const EcosystemSimulator = () => {
       console.log('🔄 Auto-export triggers: Every 1000 steps OR every 10 windows');
       console.log('📊 Manual export: Click "Export to EcoSysX Analytics" button');
     }
+    
+    // Connect analytics to React state for UI updates
+    analyticsRef.current.setUIUpdateCallback((folderLabel) => {
+      setExportFolderLabel(folderLabel);
+    });
+    
+    // Connect debug logging to React state
+    analyticsRef.current.setDebugCallback((logEntry) => {
+      setDebugLogs(prev => {
+        const newLogs = [logEntry, ...prev];
+        return newLogs.slice(0, 100); // Keep only last 100 entries
+      });
+    });
   }
+
+  // Debug logging functions for sharing errors
+  const addDebugLog = (level, message, data = null) => {
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      data: data ? JSON.stringify(data, null, 2) : null,
+      step
+    };
+    
+    setDebugLogs(prev => [logEntry, ...prev.slice(0, 99)]);
+    
+    // Also log to console
+    console[level.toLowerCase()] || console.log(`[${level}] ${message}`, data || '');
+  };
+
+  const exportDebugLogs = () => {
+    const debugData = {
+      timestamp: new Date().toISOString(),
+      currentStep: step,
+      totalLogs: debugLogs.length,
+      logs: debugLogs,
+      systemInfo: {
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        performance: performanceData
+      }
+    };
+    
+    const content = JSON.stringify(debugData, null, 2);
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `EcoSysX-Debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    addDebugLog('INFO', 'Debug logs exported successfully');
+  };
+
+  const copyDebugLogs = () => {
+    const logsText = debugLogs.slice(0, 20).map(log => 
+      `[${log.timestamp}] ${log.level}: ${log.message}${log.data ? '\nData: ' + log.data : ''}`
+    ).join('\n\n');
+    
+    navigator.clipboard.writeText(logsText).then(() => {
+      addDebugLog('INFO', 'Debug logs copied to clipboard (last 20 entries)');
+    }).catch(() => {
+      addDebugLog('ERROR', 'Failed to copy logs to clipboard');
+    });
+  };
   
   const [stats, setStats] = useState({
     susceptible: 0,
@@ -2676,12 +3021,68 @@ const EcosystemSimulator = () => {
           {/* Analysis Controls */}
           <div className="mt-2 space-y-2">
             <button
-              onClick={() => analyticsRef.current?.exportAnalytics()}
+              onClick={async () => {
+                try {
+                  addDebugLog('INFO', '🔄 Starting EcoSysX Analytics export...');
+                  addDebugLog('INFO', 'Analytics ref check', { hasAnalytics: !!analyticsRef.current });
+                  
+                  if (!analyticsRef.current) {
+                    throw new Error('Analytics system not initialized');
+                  }
+                  
+                  const result = await analyticsRef.current.exportAnalytics();
+                  addDebugLog('INFO', '✅ Export completed successfully', { resultKeys: Object.keys(result) });
+                  alert('✅ Export completed successfully!');
+                  
+                } catch (error) {
+                  addDebugLog('ERROR', '❌ Export failed', {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name
+                  });
+                  alert(`Export failed: ${error.message}\n\nCheck Debug Console for full details.`);
+                }
+              }}
               className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-sm mr-2"
               title="Export comprehensive EcoSysX logs to Downloads/EcoSysX Analytics folder"
             >
               📊 Export to EcoSysX Analytics
             </button>
+            
+            {/* Folder Selection Controls */}
+            <div className="flex items-center gap-2 mt-2 mb-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const result = await analyticsRef.current?.selectExportFolder();
+                    if (result?.success) {
+                      alert(`✅ Export folder selected: ${result.folder}`);
+                    }
+                  } catch (error) {
+                    console.error('❌ Folder selection failed:', error);
+                    alert(`Folder selection failed: ${error.message}`);
+                  }
+                }}
+                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
+                title="Choose export folder location"
+              >
+                📂 Select Export Folder
+              </button>
+              
+              <span className="text-xs text-green-300">
+                📁 {exportFolderLabel}
+              </span>
+              
+              <button
+                onClick={() => {
+                  analyticsRef.current?.resetExportFolder();
+                }}
+                className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs"
+                title="Reset to default downloads folder"
+              >
+                🔄 Reset
+              </button>
+            </div>
             <button
               onClick={exportSimulationState}
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm mr-2"
@@ -2691,6 +3092,71 @@ const EcosystemSimulator = () => {
             </button>
             <div className="text-xs text-cyan-300 mt-1">
               Performance: {performanceData.memory}MB RAM, {performanceData.fps} FPS
+            </div>
+            
+            {/* Debug Console */}
+            <div className="mt-3 border-t border-gray-600 pt-3">
+              <button
+                onClick={() => setShowDebugConsole(!showDebugConsole)}
+                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 rounded text-sm mr-2"
+                title="Toggle debug console for error reporting"
+              >
+                🐛 Debug Console ({debugLogs.length})
+              </button>
+              
+              {showDebugConsole && (
+                <div className="mt-2 bg-black border border-gray-600 rounded p-2 max-h-64 overflow-y-auto">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-gray-300">Debug Console - Last {Math.min(debugLogs.length, 100)} entries</span>
+                    <div className="space-x-1">
+                      <button
+                        onClick={copyDebugLogs}
+                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
+                        title="Copy recent logs to clipboard for sharing"
+                      >
+                        📋 Copy
+                      </button>
+                      <button
+                        onClick={exportDebugLogs}
+                        className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
+                        title="Export full debug logs as JSON file"
+                      >
+                        📄 Export
+                      </button>
+                      <button
+                        onClick={() => setDebugLogs([])}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                        title="Clear debug logs"
+                      >
+                        🗑️ Clear
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1 text-xs font-mono">
+                    {debugLogs.length === 0 ? (
+                      <div className="text-gray-500 italic">No debug logs yet</div>
+                    ) : (
+                      debugLogs.slice(0, 50).map((log, index) => (
+                        <div key={index} className={`p-1 rounded ${
+                          log.level === 'ERROR' ? 'bg-red-900 text-red-200' :
+                          log.level === 'WARN' ? 'bg-yellow-900 text-yellow-200' :
+                          'bg-gray-800 text-gray-200'
+                        }`}>
+                          <div className="flex justify-between">
+                            <span className="font-bold">[{log.level}] {log.message}</span>
+                            <span className="text-gray-400">Step {log.step}</span>
+                          </div>
+                          {log.data && (
+                            <pre className="mt-1 text-xs text-gray-300 whitespace-pre-wrap">{log.data}</pre>
+                          )}
+                          <div className="text-gray-500 text-xs mt-1">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="text-xs text-purple-300 mt-1">
               Windows: {analyticsRef.current?.windowHistory?.length || 0} | 
@@ -2715,7 +3181,8 @@ const EcosystemSimulator = () => {
             <p>• <strong>Click Agent:</strong> View reasoning details</p>
             <p>• <strong>Right Drag:</strong> Rotate camera</p>
             <p>• <strong>Scroll:</strong> Zoom in/out</p>
-            <p>• <strong>Export to EcoSysX Analytics:</strong> Comprehensive logs and CSV reports exported to C:\Users\Bbeie\Downloads\EcoSysX Analytics\</p>
+            <p>• <strong>Export to EcoSysX Analytics:</strong> Comprehensive logs and CSV reports exported to your selected folder</p>
+            <p>• <strong>Select Export Folder:</strong> Choose where to save your analytics files (requires supported browser)</p>
             <p>• <strong>Export Snapshot:</strong> Full current state</p>
             <p>• <strong className="text-yellow-300">Gold agents:</strong> Advanced AI reasoning</p>
             <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
