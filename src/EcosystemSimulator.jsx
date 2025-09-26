@@ -255,6 +255,366 @@ class SocialMemory {
       .slice(0, count);
     return agents.map(([id, memory]) => ({ id, trust: memory.trust }));
   }
+
+  receiveMessage(message) {
+    this.addReceivedMessage(message);
+    
+    // Update trust based on message sender if known
+    if (this.knownAgents.has(message.from)) {
+      const trustAdjustment = message.trust > 0.5 ? 0.02 : -0.01;
+      this.updateTrust(message.from, trustAdjustment, 'message_received');
+    }
+  }
+
+  updateAgentMemory(agentId, observation) {
+    if (!this.knownAgents.has(agentId)) {
+      this.knownAgents.set(agentId, {
+        firstMet: Date.now(),
+        lastSeen: Date.now(),
+        trust: this.neutralTrust,
+        interactions: 0,
+        sharedInfo: [],
+        helpGiven: 0,
+        helpReceived: 0,
+        accurateInfo: 0,
+        falseInfo: 0,
+        totalInfo: 0
+      });
+    }
+    
+    const memory = this.knownAgents.get(agentId);
+    memory.lastSeen = observation.lastSeen || Date.now();
+    memory.interactions++;
+    
+    // Store recent observations
+    if (!memory.recentObservations) {
+      memory.recentObservations = [];
+    }
+    memory.recentObservations.push(observation);
+    if (memory.recentObservations.length > 10) {
+      memory.recentObservations.shift();
+    }
+  }
+}
+
+// Lean Analytics System - Event-driven windowed logging
+class EcosystemAnalytics {
+  constructor(windowSize = 100, checkpointInterval = 1000) {
+    this.windowSize = windowSize;
+    this.checkpointInterval = checkpointInterval;
+    this.currentStep = 0;
+    this.windowStart = 0;
+    
+    // Rolling aggregates (reset each window)
+    this.resetWindow();
+    
+    // Persistent data
+    this.windowHistory = [];
+    this.checkpoints = [];
+    this.panelSample = new Map(); // Reservoir sample of agents
+    this.panelSize = 200;
+    
+    // Exponential decay contact matrix
+    this.contactMatrix = new Map();
+    this.decayRate = 0.05;
+    
+    console.log(`📊 Analytics: Window=${windowSize} steps, Checkpoints every ${checkpointInterval} steps`);
+  }
+
+  resetWindow() {
+    this.windowData = {
+      contacts_by_type: new Map(),
+      infections_caused: new Map(),
+      infectious_time: new Map(),
+      energy_stats: new Map(),
+      births_by_type: new Map(),
+      deaths_by_cause: new Map(),
+      comm_tally: new Map(),
+      resources_consumed: 0,
+      resources_spawned: 0,
+      events: []
+    };
+  }
+
+  recordStep(step, agents, environment, stats) {
+    this.currentStep = step;
+    
+    // Record contacts and interactions
+    this.recordContacts(agents);
+    this.recordEnergyStats(agents);
+    this.recordResourceActivity(environment);
+    this.updatePanelSample(agents);
+    
+    // Check for window completion
+    if (step - this.windowStart >= this.windowSize) {
+      this.finalizeWindow(agents, environment, stats);
+      this.windowStart = step;
+      this.resetWindow();
+    }
+    
+    // Check for checkpoint
+    if (step > 0 && step % this.checkpointInterval === 0) {
+      this.createCheckpoint(agents, environment, stats);
+    }
+  }
+
+  recordContacts(agents) {
+    const contactDistance = 8;
+    
+    agents.forEach(agentA => {
+      const typeA = this.getAgentType(agentA);
+      
+      agents.forEach(agentB => {
+        if (agentA.id !== agentB.id && agentA.distanceTo(agentB) < contactDistance) {
+          const typeB = this.getAgentType(agentB);
+          const key = `${typeA}_${typeB}`;
+          
+          this.windowData.contacts_by_type.set(key, 
+            (this.windowData.contacts_by_type.get(key) || 0) + 1);
+          
+          // Record infection events
+          if (agentA.status === 'Infected' && agentB.status === 'Susceptible') {
+            this.windowData.infections_caused.set(agentA.id, 
+              (this.windowData.infections_caused.get(agentA.id) || 0) + 1);
+          }
+        }
+      });
+      
+      // Record infectious time
+      if (agentA.status === 'Infected') {
+        this.windowData.infectious_time.set(typeA, 
+          (this.windowData.infectious_time.get(typeA) || 0) + 1);
+      }
+    });
+  }
+
+  recordEnergyStats(agents) {
+    const energyByType = new Map();
+    
+    agents.forEach(agent => {
+      const type = this.getAgentType(agent);
+      if (!energyByType.has(type)) {
+        energyByType.set(type, []);
+      }
+      energyByType.get(type).push(agent.energy);
+    });
+    
+    energyByType.forEach((energies, type) => {
+      const mean = energies.reduce((a, b) => a + b, 0) / energies.length;
+      const atCap = energies.filter(e => e >= 100).length / energies.length;
+      
+      this.windowData.energy_stats.set(type, {
+        mean: Math.round(mean * 10) / 10,
+        count: energies.length,
+        pct_at_cap: Math.round(atCap * 1000) / 10 // 0.1% precision
+      });
+    });
+  }
+
+  recordResourceActivity(environment) {
+    this.windowData.resources_spawned = environment.resources.size;
+  }
+
+  recordEvent(type, data) {
+    this.windowData.events.push({
+      step: this.currentStep,
+      type: type,
+      data: data,
+      timestamp: Date.now()
+    });
+  }
+
+  recordCommunication(fromType, toType, messageType, success) {
+    const key = `${messageType}_${fromType}_to_${toType}`;
+    const currentTally = this.windowData.comm_tally.get(key) || { sent: 0, acted: 0 };
+    
+    currentTally.sent++;
+    if (success) currentTally.acted++;
+    
+    this.windowData.comm_tally.set(key, currentTally);
+  }
+
+  getAgentType(agent) {
+    if (agent.constructor.name === 'CausalAgent') return 'Causal';
+    if (agent.id.includes('basic')) return 'Basic';
+    return 'RL';
+  }
+
+  finalizeWindow(agents, environment, stats) {
+    const windowSummary = {
+      t0: this.windowStart,
+      dt_steps: this.windowSize,
+      population: this.summarizePopulation(agents),
+      epidemic: this.summarizeEpidemic(agents),
+      comms: Object.fromEntries(this.windowData.comm_tally),
+      energy: Object.fromEntries(this.windowData.energy_stats),
+      resources: {
+        total_available: environment.resources.size,
+        consumed_estimate: this.windowData.resources_consumed
+      },
+      contacts: Object.fromEntries(this.windowData.contacts_by_type),
+      events_count: this.windowData.events.length
+    };
+    
+    this.windowHistory.push(windowSummary);
+    
+    // Keep only last 50 windows to manage memory
+    if (this.windowHistory.length > 50) {
+      this.windowHistory.shift();
+    }
+    
+    // Log compact window summary
+    if (this.currentStep % 500 === 0) {
+      console.log(`📈 Window [${this.windowStart}-${this.currentStep}]:`, 
+        `Pop=${windowSummary.population.total}, ` +
+        `I=${windowSummary.epidemic.infections}, ` +
+        `Comms=${Object.values(windowSummary.comms).reduce((a,b) => a + (b.sent || 0), 0)}, ` +
+        `Contacts=${Object.values(windowSummary.contacts).reduce((a,b) => a + b, 0)}`
+      );
+    }
+  }
+
+  summarizePopulation(agents) {
+    const byType = new Map();
+    const byHealth = new Map();
+    
+    agents.forEach(agent => {
+      const type = this.getAgentType(agent);
+      byType.set(type, (byType.get(type) || 0) + 1);
+      byHealth.set(agent.status, (byHealth.get(agent.status) || 0) + 1);
+    });
+    
+    return {
+      total: agents.length,
+      by_type: Object.fromEntries(byType),
+      by_health: Object.fromEntries(byHealth)
+    };
+  }
+
+  summarizeEpidemic(agents) {
+    const infectiousByType = new Map();
+    
+    agents.filter(a => a.status === 'Infected').forEach(agent => {
+      const type = this.getAgentType(agent);
+      infectiousByType.set(type, (infectiousByType.get(type) || 0) + 1);
+    });
+    
+    return {
+      total_infected: infectiousByType.size,
+      infectious_by_type: Object.fromEntries(infectiousByType),
+      infections_caused: Object.fromEntries(this.windowData.infections_caused),
+      infectious_time: Object.fromEntries(this.windowData.infectious_time)
+    };
+  }
+
+  updatePanelSample(agents) {
+    // Reservoir sampling for detailed tracking
+    agents.forEach(agent => {
+      if (this.panelSample.size < this.panelSize) {
+        this.panelSample.set(agent.id, this.captureAgentState(agent));
+      } else if (Math.random() < this.panelSize / (this.currentStep + 1)) {
+        // Replace random agent with 5% probability
+        if (Math.random() < 0.05) {
+          const randomId = Array.from(this.panelSample.keys())[
+            Math.floor(Math.random() * this.panelSample.size)
+          ];
+          this.panelSample.delete(randomId);
+          this.panelSample.set(agent.id, this.captureAgentState(agent));
+        }
+      }
+    });
+  }
+
+  captureAgentState(agent) {
+    return {
+      id: agent.id,
+      type: this.getAgentType(agent),
+      age: agent.age,
+      energy: Math.round(agent.energy),
+      status: agent.status,
+      trust_avg: agent.calculateAverageTrust ? Math.round(agent.calculateAverageTrust() * 100) / 100 : 0.5,
+      position: {
+        x: Math.round(agent.position.x * 10) / 10,
+        z: Math.round(agent.position.z * 10) / 10
+      }
+    };
+  }
+
+  createCheckpoint(agents, environment, stats) {
+    const checkpoint = {
+      checkpoint_step: this.currentStep,
+      population_total: agents.length,
+      window_count: this.windowHistory.length,
+      panel_sample: Array.from(this.panelSample.values()),
+      recent_windows: this.windowHistory.slice(-5), // Last 5 windows for context
+      performance: {
+        fps: stats.fps || 0,
+        memory_mb: typeof performance !== 'undefined' && performance.memory 
+          ? Math.round(performance.memory.usedJSHeapSize / 1048576) 
+          : 0
+      }
+    };
+    
+    this.checkpoints.push(checkpoint);
+    
+    // Keep only last 10 checkpoints
+    if (this.checkpoints.length > 10) {
+      this.checkpoints.shift();
+    }
+    
+    console.log(`🎯 CHECKPOINT [Step ${this.currentStep}]: ` +
+      `${checkpoint.population_total} agents, ` +
+      `${this.windowHistory.length} windows analyzed, ` +
+      `${checkpoint.performance.memory_mb}MB memory`);
+  }
+
+  exportAnalytics() {
+    const export_data = {
+      metadata: {
+        current_step: this.currentStep,
+        window_size: this.windowSize,
+        checkpoint_interval: this.checkpointInterval,
+        export_timestamp: new Date().toISOString()
+      },
+      recent_windows: this.windowHistory,
+      checkpoints: this.checkpoints,
+      panel_sample: Array.from(this.panelSample.values())
+    };
+    
+    console.log('=== LEAN ANALYTICS EXPORT ===');
+    console.log(JSON.stringify(export_data, null, 2));
+    console.log('=== END ANALYTICS EXPORT ===');
+    
+    // Download as JSON file
+    const blob = new Blob([JSON.stringify(export_data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ecosystem-analytics-step-${this.currentStep}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    return export_data;
+  }
+
+  // Calculate key epidemiological metrics
+  calculateEpiMetrics() {
+    if (this.windowHistory.length < 3) return null;
+    
+    const recent = this.windowHistory.slice(-5);
+    const totalInfections = recent.reduce((sum, w) => sum + (w.epidemic?.total_infected || 0), 0);
+    const totalContacts = recent.reduce((sum, w) => 
+      sum + Object.values(w.contacts || {}).reduce((a, b) => a + b, 0), 0);
+    
+    const beta_estimate = totalContacts > 0 ? totalInfections / totalContacts : 0;
+    
+    return {
+      beta_estimate: Math.round(beta_estimate * 10000) / 10000,
+      total_infections_recent: totalInfections,
+      total_contacts_recent: totalContacts,
+      windows_analyzed: recent.length
+    };
+  }
 }
 
 // Base Agent Class
@@ -306,9 +666,10 @@ class Agent {
     
     this.age++;
     
-    const baseLoss = 0.3;
-    const infectionPenalty = this.status === 'Infected' ? 0.4 : 0;
-    const agePenalty = this.age > this.maxLifespan * 0.8 ? 0.2 : 0;
+    // Increased energy consumption for selection pressure
+    const baseLoss = 0.5; // Increased from 0.3
+    const infectionPenalty = this.status === 'Infected' ? 0.6 : 0; // Increased from 0.4
+    const agePenalty = this.age > this.maxLifespan * 0.8 ? 0.3 : 0; // Increased from 0.2
     
     this.energy = Math.max(0, this.energy - (baseLoss + infectionPenalty + agePenalty));
     this.reproductionCooldown = Math.max(0, this.reproductionCooldown - 1);
@@ -339,7 +700,9 @@ class Agent {
       );
       
       if (nearbyInfected.length > 0) {
-        const infectionProbability = 0.03 * (1 - this.phenotype.resistance);
+        // Increased infection probability for observable epidemics
+        const baseInfectionRate = 0.15; // Increased from 0.03 to 15%
+        const infectionProbability = baseInfectionRate * (1 - this.phenotype.resistance);
         if (Math.random() < infectionProbability) {
           this.status = 'Infected';
           this.infectionTimer = 0;
@@ -861,6 +1224,135 @@ class CausalAgent extends Agent {
       this.mesh.material.color = color;
     }
   }
+
+  // Override update method to add communication
+  update(environment, agents, isSimulationRunning = true) {
+    // Call parent update first
+    const result = super.update(environment, agents, isSimulationRunning);
+    
+    // Add communication logic if simulation is running
+    if (isSimulationRunning && this.isActive) {
+      this.handleCommunication(agents, environment);
+      this.updateSocialMemory(agents);
+    }
+    
+    return result;
+  }
+
+  handleCommunication(agents, environment) {
+    // Decrease communication cooldown
+    this.communicationCooldown = Math.max(0, this.communicationCooldown - 1);
+    
+    // Try to communicate every few steps when not on cooldown
+    if (this.communicationCooldown === 0 && Math.random() < 0.3) {
+      const nearbyAgents = agents.filter(agent => 
+        agent !== this && 
+        agent instanceof CausalAgent && 
+        this.distanceTo(agent) < 8
+      );
+      
+      if (nearbyAgents.length > 0) {
+        const recipient = nearbyAgents[Math.floor(Math.random() * nearbyAgents.length)];
+        const message = this.createMessage(environment, agents);
+        
+        if (message) {
+          this.sendMessage(recipient, message);
+          this.communicationCooldown = 10; // 10 step cooldown
+          
+          // Update stats for tracking
+          if (typeof window !== 'undefined' && window.ecosystemStats) {
+            window.ecosystemStats.communicationEvents++;
+          }
+        }
+      }
+    }
+  }
+
+  createMessage(environment, agents) {
+    const messageTypes = [];
+    
+    // Resource sharing
+    if (this.energy > 70) {
+      const nearbyResources = Array.from(environment.resources.values())
+        .filter(r => this.distanceTo(r) < 15);
+      if (nearbyResources.length > 0) {
+        messageTypes.push({
+          type: 'resource_tip',
+          content: { 
+            location: nearbyResources[0].position,
+            confidence: 0.8
+          }
+        });
+      }
+    }
+    
+    // Warning about infection
+    if (this.status === 'Recovered') {
+      const infectedNearby = agents.filter(a => 
+        a.status === 'Infected' && this.distanceTo(a) < 10
+      );
+      if (infectedNearby.length > 0) {
+        messageTypes.push({
+          type: 'infection_warning',
+          content: {
+            location: infectedNearby[0].position,
+            severity: infectedNearby.length,
+            confidence: 0.9
+          }
+        });
+      }
+    }
+    
+    return messageTypes.length > 0 ? messageTypes[0] : null;
+  }
+
+  sendMessage(recipient, message) {
+    if (!recipient.socialMemory) return;
+    
+    recipient.socialMemory.receiveMessage({
+      from: this.id,
+      type: message.type,
+      content: message.content,
+      timestamp: Date.now(),
+      trust: recipient.socialMemory.getTrust(this.id)
+    });
+    
+    // Update trust based on message quality
+    const trustChange = message.content.confidence > 0.7 ? 0.05 : -0.02;
+    recipient.socialMemory.updateTrust(this.id, trustChange);
+    
+    this.lastCommunication = {
+      recipient: recipient.id,
+      message: message,
+      timestamp: Date.now()
+    };
+    
+    // Record communication in analytics if available
+    if (typeof window !== 'undefined' && window.ecosystemAnalytics) {
+      const fromType = this.constructor.name === 'CausalAgent' ? 'Causal' : 'RL';
+      const toType = recipient.constructor.name === 'CausalAgent' ? 'Causal' : 'RL';
+      const success = trustChange > 0; // Consider successful if trust increased
+      
+      window.ecosystemAnalytics.recordCommunication(fromType, toType, message.type, success);
+    }
+  }
+
+  updateSocialMemory(agents) {
+    // Update memory about nearby agents
+    const nearbyAgents = agents.filter(agent => 
+      agent !== this && this.distanceTo(agent) < 12
+    );
+    
+    nearbyAgents.forEach(agent => {
+      this.socialMemory.updateAgentMemory(agent.id, {
+        lastSeen: Date.now(),
+        location: { ...agent.position },
+        status: agent.status,
+        energy: agent.energy,
+        behavior: 'observed'
+      });
+    });
+  }
 }
 
 // Dynamic Environment System
@@ -909,14 +1401,16 @@ class Environment {
 
   regenerateResources() {
     const resourceCount = this.resources.size;
-    const seasonMultiplier = this.season === 'winter' ? 0.6 : 
-                           this.season === 'spring' ? 1.4 : 
-                           this.season === 'summer' ? 1.2 : 1.0;
+    const seasonMultiplier = this.season === 'winter' ? 0.4 : 
+                           this.season === 'spring' ? 1.0 : 
+                           this.season === 'summer' ? 0.8 : 0.6;
     
-    const maxResources = Math.floor((this.season === 'winter' ? 40 : 60) * seasonMultiplier);
+    // Reduced max resources to create scarcity
+    const maxResources = Math.floor((this.season === 'winter' ? 20 : 30) * seasonMultiplier);
     
-    if (resourceCount < maxResources && Math.random() < 0.6) {
-      const numNewResources = Math.min(3, maxResources - resourceCount);
+    // Reduced spawn chance and rate
+    if (resourceCount < maxResources && Math.random() < 0.3) {
+      const numNewResources = Math.min(1, maxResources - resourceCount);
       
       for (let i = 0; i < numNewResources; i++) {
         const quality = Math.random();
@@ -936,8 +1430,9 @@ class Environment {
       }
     }
     
-    if (resourceCount < 10) {
-      for (let i = 0; i < 5; i++) {
+    // Reduced emergency threshold and spawn rate
+    if (resourceCount < 5) {
+      for (let i = 0; i < 2; i++) {
         const id = `emergency_${Date.now()}_${i}`;
         this.resources.set(id, {
           position: {
@@ -1071,6 +1566,15 @@ class PlayerAgent extends Agent {
 
 // Main Ecosystem Simulator Component
 const EcosystemSimulator = () => {
+  // Initialize global stats tracking for communication
+  if (typeof window !== 'undefined' && !window.ecosystemStats) {
+    window.ecosystemStats = {
+      communicationEvents: 0,
+      activeMessages: 0,
+      step: 0
+    };
+  }
+
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
@@ -1092,6 +1596,21 @@ const EcosystemSimulator = () => {
   const [populationHistory, setPopulationHistory] = useState([]);
   const [notification, setNotification] = useState(null);
   const [performanceData, setPerformanceData] = useState({ memory: 0, fps: 0, lastTime: 0 });
+  const [llmConfig, setLLMConfig] = useState({
+    enabled: false,
+    ollamaStatus: 'checking', // 'checking', 'connected', 'disconnected'
+    endpoint: 'http://localhost:11434'
+  });
+  
+  // Initialize lean analytics system
+  const analyticsRef = useRef(null);
+  if (!analyticsRef.current) {
+    analyticsRef.current = new EcosystemAnalytics(100, 1000); // 100-step windows, 1000-step checkpoints
+    // Make analytics globally available for agents
+    if (typeof window !== 'undefined') {
+      window.ecosystemAnalytics = analyticsRef.current;
+    }
+  }
   
   const [stats, setStats] = useState({
     susceptible: 0,
@@ -1183,6 +1702,9 @@ const EcosystemSimulator = () => {
 
     // Major milestone logging
     if (step % 1000 === 0 && step > 0) {
+      const causalAgents = agents.filter(a => a instanceof CausalAgent);
+      const llmEnabledAgents = causalAgents.filter(a => a.llmAvailable);
+      
       console.log(`🎯 MILESTONE [Step ${step}]: Major population dynamics analysis`);
       console.log(`   Population Distribution: ${JSON.stringify(agents.reduce((acc, agent) => {
         const type = agent.constructor.name;
@@ -1191,8 +1713,9 @@ const EcosystemSimulator = () => {
       }, {}))}`);
       console.log(`   Disease Status: S=${stats.susceptible}, I=${stats.infected}, R=${stats.recovered}`);
       console.log(`   Resource Pressure: ${environment.resources.size} resources for ${stats.total} agents`);
+      console.log(`   🧠 AI Reasoning: ${llmEnabledAgents.length}/${causalAgents.length} Causal agents using real LLM`);
     }
-  }, [step, stats, agents, environment]);
+  }, [step, stats, agents, environment, llmConfig]);
 
   // Show notification helper
   const showNotification = (message, type = 'info') => {
@@ -1297,13 +1820,25 @@ const EcosystemSimulator = () => {
       
       for (let i = 0; i < 25; i++) {
         let agent;
-        if (i < 10) {
+        if (i < 8) {
+          // Causal agents (8 agents)
           agent = new CausalAgent(`causal_${i}`, { 
             x: (Math.random() - 0.5) * 30, 
             y: 1, 
             z: (Math.random() - 0.5) * 30 
           });
+          // Set initial LLM status (will be updated by connection check)
+          agent.llmAvailable = llmConfig.enabled;
+          agent.reasoningMode = true;
+        } else if (i < 16) {
+          // Basic agents (8 agents) - regular Agent class
+          agent = new Agent(`basic_${i}`, { 
+            x: (Math.random() - 0.5) * 30, 
+            y: 1, 
+            z: (Math.random() - 0.5) * 30 
+          });
         } else {
+          // RL agents (9 agents) - enhanced Agent class
           agent = new Agent(`rl_${i}`, { 
             x: (Math.random() - 0.5) * 30, 
             y: 1, 
@@ -1311,7 +1846,11 @@ const EcosystemSimulator = () => {
           });
         }
         
-        if (i === 0) agent.status = 'Infected';
+        // Seed multiple infected agents for observable epidemic dynamics
+        if (i < 3) {
+          agent.status = 'Infected';
+          agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
+        }
         
         createAgentMesh(agent, scene);
         initialAgents.push(agent);
@@ -1409,6 +1948,106 @@ const EcosystemSimulator = () => {
     };
   }, []);
 
+  // Check LLM (Ollama) connection status
+  useEffect(() => {
+    let isCancelled = false;
+    let checkInterval;
+    
+    const checkOllamaConnection = async () => {
+      if (isCancelled) return;
+      
+      try {
+        const endpoint = llmConfig.endpoint || 'http://localhost:11434';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // Reduced timeout
+        
+        const response = await fetch(`${endpoint}/api/tags`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok && !isCancelled) {
+          const data = await response.json();
+          const hasModel = data.models?.some(m => 
+            m.name.includes('gpt') || 
+            m.name.includes('llama') || 
+            m.name.includes('mistral') || 
+            m.name.includes('codellama')
+          );
+          
+          // Only update if status actually changed
+          setLLMConfig(prev => {
+            if (prev.ollamaStatus !== 'connected' || prev.enabled !== hasModel) {
+              console.log(`🤖 Ollama Status: Connected. LLM ${hasModel ? 'ENABLED' : 'NO MODELS'}`);
+              
+              // Update agents only when status changes
+              setTimeout(() => {
+                setAgents(currentAgents => {
+                  return currentAgents.map(agent => {
+                    if (agent instanceof CausalAgent && agent.llmAvailable !== hasModel) {
+                      agent.llmAvailable = hasModel;
+                      agent.reasoningMode = hasModel;
+                    }
+                    return agent;
+                  });
+                });
+              }, 0);
+              
+              if (hasModel && prev.ollamaStatus !== 'connected') {
+                showNotification('🧠 LLM Connected & Ready!', 'success');
+              }
+            }
+            
+            return { 
+              ...prev, 
+              ollamaStatus: 'connected',
+              enabled: hasModel
+            };
+          });
+        } else if (!isCancelled) {
+          throw new Error('Ollama not responding');
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setLLMConfig(prev => {
+            if (prev.ollamaStatus !== 'disconnected') {
+              console.log('🤖 Ollama disconnected - Using simulated reasoning');
+              
+              // Update agents only when status changes
+              setTimeout(() => {
+                setAgents(currentAgents => {
+                  return currentAgents.map(agent => {
+                    if (agent instanceof CausalAgent && agent.llmAvailable !== false) {
+                      agent.llmAvailable = false;
+                      agent.reasoningMode = true; // Still use reasoning, but simulated
+                    }
+                    return agent;
+                  });
+                });
+              }, 0);
+            }
+            
+            return { ...prev, ollamaStatus: 'disconnected', enabled: false };
+          });
+        }
+      }
+    };
+    
+    // Initial connection check
+    checkOllamaConnection();
+    
+    // Recheck every 60 seconds (less frequent)
+    checkInterval = setInterval(checkOllamaConnection, 60000);
+    
+    return () => {
+      isCancelled = true;
+      if (checkInterval) clearInterval(checkInterval);
+    };
+  }, []); // Remove dependencies to prevent constant re-running
+
   const simulationStep = useCallback(() => {
     if (!sceneRef.current || !isRunning) return;
 
@@ -1427,6 +2066,20 @@ const EcosystemSimulator = () => {
         switch (result) {
           case 'die':
             toRemove.push(index);
+            // Record death event in analytics
+            if (analyticsRef.current) {
+              const agentType = agent.constructor.name === 'CausalAgent' ? 'Causal' : 
+                              (agent.id.includes('basic') ? 'Basic' : 'RL');
+              const deathCause = agent.energy <= 5 ? 'starvation' : 
+                               agent.status === 'Infected' ? 'infection' : 'old_age';
+              analyticsRef.current.recordEvent('death', {
+                agent_id: agent.id,
+                agent_type: agentType,
+                cause: deathCause,
+                age: agent.age,
+                energy: agent.energy
+              });
+            }
             break;
           case 'reproduce':
             if (newAgents.length < 120) {
@@ -1442,12 +2095,31 @@ const EcosystemSimulator = () => {
                   },
                   agent.reproduce().genotype
                 );
+                // Inherit LLM capabilities from parent
+                offspring.llmAvailable = agent.llmAvailable;
+                offspring.reasoningMode = agent.reasoningMode;
               } else {
                 offspring = agent.reproduce();
               }
               
               createAgentMesh(offspring, sceneRef.current);
               toAdd.push(offspring);
+              
+              // Record birth event in analytics
+              if (analyticsRef.current) {
+                const parentType = agent.constructor.name === 'CausalAgent' ? 'Causal' : 
+                                 (agent.id.includes('basic') ? 'Basic' : 'RL');
+                const offspringType = offspring.constructor.name === 'CausalAgent' ? 'Causal' : 
+                                    (offspring.id.includes('basic') ? 'Basic' : 'RL');
+                analyticsRef.current.recordEvent('birth', {
+                  parent_id: agent.id,
+                  parent_type: parentType,
+                  offspring_id: offspring.id,
+                  offspring_type: offspringType,
+                  parent_age: agent.age,
+                  parent_energy: agent.energy
+                });
+              }
             }
             break;
         }
@@ -1482,9 +2154,22 @@ const EcosystemSimulator = () => {
         causalAgents,
         rlAgents,
         reasoningEvents: 0,
-        communicationEvents: 0,
-        activeMessages: 0
+        communicationEvents: window.ecosystemStats?.communicationEvents || 0,
+        activeMessages: window.ecosystemStats?.activeMessages || 0
       });
+
+      // Record analytics data for current step
+      if (analyticsRef.current) {
+        analyticsRef.current.recordStep(step, newAgents, newEnvironment, {
+          susceptible,
+          infected,
+          recovered,
+          total: newAgents.length,
+          avgAge: newAgents.length > 0 ? Math.round(totalAge / newAgents.length) : 0,
+          avgEnergy: newAgents.length > 0 ? Math.round(totalEnergy / newAgents.length) : 0,
+          fps: performanceData.fps
+        });
+      }
 
       return newAgents;
     });
@@ -1562,13 +2247,25 @@ const EcosystemSimulator = () => {
     for (let i = 0; i < 25; i++) {
       let agent;
       
-      if (i < 10) {
+      if (i < 8) {
+        // Causal agents (8 agents)
         agent = new CausalAgent(`causal_reset_${i}_${Date.now()}`, { 
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
           z: (Math.random() - 0.5) * 30 
         });
+        // Inherit current LLM status
+        agent.llmAvailable = llmConfig.enabled && llmConfig.ollamaStatus === 'connected';
+        agent.reasoningMode = true;
+      } else if (i < 16) {
+        // Basic agents (8 agents)
+        agent = new Agent(`basic_reset_${i}_${Date.now()}`, { 
+          x: (Math.random() - 0.5) * 30, 
+          y: 1, 
+          z: (Math.random() - 0.5) * 30 
+        });
       } else {
+        // RL agents (9 agents)
         agent = new Agent(`rl_reset_${i}_${Date.now()}`, { 
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
@@ -1576,7 +2273,11 @@ const EcosystemSimulator = () => {
         });
       }
       
-      if (i === 0) agent.status = 'Infected';
+      // Seed multiple infected agents for observable epidemic dynamics
+      if (i < 3) {
+        agent.status = 'Infected';
+        agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
+      }
       
       createAgentMesh(agent, sceneRef.current);
       newAgents.push(agent);
@@ -1701,14 +2402,38 @@ const EcosystemSimulator = () => {
           {/* Analysis Controls */}
           <div className="mt-2 space-y-2">
             <button
-              onClick={exportSimulationState}
+              onClick={() => analyticsRef.current?.exportAnalytics()}
               className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-sm mr-2"
-              title="Export current simulation state to JSON file"
+              title="Export lean windowed analytics (optimized for analysis)"
             >
-              📊 Export Data
+              📊 Export Analytics
+            </button>
+            <button
+              onClick={exportSimulationState}
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm mr-2"
+              title="Export full simulation state (detailed snapshot)"
+            >
+              � Export Snapshot
             </button>
             <div className="text-xs text-cyan-300 mt-1">
               Performance: {performanceData.memory}MB RAM, {performanceData.fps} FPS
+            </div>
+            <div className="text-xs text-purple-300 mt-1">
+              Windows: {analyticsRef.current?.windowHistory?.length || 0} | 
+              Checkpoints: {analyticsRef.current?.checkpoints?.length || 0}
+            </div>
+            <div className={`text-xs mt-1 ${
+              llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
+                ? 'text-green-300' 
+                : llmConfig.ollamaStatus === 'checking' 
+                  ? 'text-yellow-300' 
+                  : 'text-red-300'
+            }`}>
+              🧠 LLM: {(() => {
+                if (llmConfig.ollamaStatus === 'checking') return 'Checking Ollama...';
+                if (llmConfig.ollamaStatus === 'connected' && llmConfig.enabled) return 'Real AI Active';
+                return 'Simulated Only';
+              })()}
             </div>
           </div>
           
@@ -1716,12 +2441,13 @@ const EcosystemSimulator = () => {
             <p>• <strong>Click Agent:</strong> View reasoning details</p>
             <p>• <strong>Right Drag:</strong> Rotate camera</p>
             <p>• <strong>Scroll:</strong> Zoom in/out</p>
-            <p>• <strong>Export Data:</strong> Download simulation state as JSON</p>
+            <p>• <strong>Export Analytics:</strong> Lean windowed data for analysis</p>
+            <p>• <strong>Export Snapshot:</strong> Full current state</p>
             <p>• <strong className="text-yellow-300">Gold agents:</strong> Advanced AI reasoning</p>
             <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
             <p>• <strong className="text-red-300">Red agents:</strong> Infected (spreading disease)</p>
             <p>• <strong className="text-green-300">Green cubes:</strong> Resources to collect</p>
-            <p className="text-cyan-300 mt-1">📊 Console logs: Population data every 100 steps, milestones every 1000 steps</p>
+            <p className="text-purple-300 mt-1">� Analytics: Event-driven windows every 100 steps, checkpoints every 1000</p>
           </div>
         </div>
         
