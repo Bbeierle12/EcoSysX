@@ -129,47 +129,89 @@ export class LLMService {
     const { personality, id, age, energy, status } = agentData;
     const { nearbyAgents, nearbyInfected, nearestResourceDistance, nearbyCount } = observation;
     
-    // Calculate dynamic context
+    // Calculate dynamic context with enhanced environmental factors
     const populationPressure = agents.length > 50 ? 'high' : agents.length < 20 ? 'low' : 'moderate';
-    const infectionRisk = nearbyInfected > 0 ? 'high' : 'low';
-    const energyStatus = energy < 30 ? 'critical' : energy > 70 ? 'abundant' : 'moderate';
-    const resourceAvailability = nearestResourceDistance < 10 ? 'nearby' : 'distant';
+    const infectionRisk = nearbyInfected > 2 ? 'critical' : nearbyInfected > 0 ? 'high' : 'low';
+    const energyStatus = energy < 20 ? 'critical' : energy < 40 ? 'low' : energy > 70 ? 'abundant' : 'moderate';
+    const resourceAvailability = nearestResourceDistance < 5 ? 'immediate' : nearestResourceDistance < 15 ? 'nearby' : 'distant';
     
-    const systemPrompt = `You are an autonomous agent in an ecosystem simulation. You must make survival decisions based on current conditions.
+    // Social context analysis
+    const socialContext = nearbyAgents.length > 0 ? this.analyzeSocialContext(nearbyAgents) : 'isolated';
+    const agentTypes = nearbyAgents.reduce((acc, agent) => {
+      acc[agent.type] = (acc[agent.type] || 0) + 1;
+      return acc;
+    }, {});
+    
+    // Enhanced survival analysis
+    const survivalThreats = [];
+    if (energy < 30) survivalThreats.push('energy_depletion');
+    if (nearbyInfected > 0) survivalThreats.push('infection_risk');
+    if (age > 150) survivalThreats.push('aging');
+    if (nearestResourceDistance > 20) survivalThreats.push('resource_scarcity');
+
+    const systemPrompt = `You are an intelligent agent in a complex ecosystem simulation. Make strategic survival decisions based on current conditions.
 
 AGENT PROFILE:
 - ID: ${id}
-- Age: ${age} steps
+- Age: ${age} simulation steps (lifespan ~200 steps)  
 - Personality: ${personality}
-- Energy: ${energy}% (${energyStatus})
+- Energy: ${energy}% (${energyStatus} - critical threshold: 20%)
 - Health Status: ${status}
+- Survival Threats: ${survivalThreats.length > 0 ? survivalThreats.join(', ') : 'none immediate'}
 
-CURRENT SITUATION:
+ENVIRONMENTAL SITUATION:
 - Population Pressure: ${populationPressure} (${agents.length} agents total)
-- Nearby Agents: ${nearbyCount}
-- Infection Risk: ${infectionRisk} (${nearbyInfected} infected nearby)
-- Resource Availability: ${resourceAvailability} (nearest at ${nearestResourceDistance} units)
+- Social Context: ${socialContext}
+- Nearby Agents: ${nearbyCount} (Types: ${JSON.stringify(agentTypes)})
+- Infection Risk: ${infectionRisk} (${nearbyInfected} infected agents nearby)
+- Resource Availability: ${resourceAvailability} (nearest at ${nearestResourceDistance.toFixed(1)} units)
 
-DECISION FRAMEWORK:
-Consider these priorities in order:
-1. Survival (avoid death from starvation/disease)
-2. Energy management (find food when needed)
-3. Disease avoidance (stay away from infected agents)
-4. Reproduction (when energy is abundant and safe)
-5. Exploration (when no immediate threats)
+DECISION PRIORITIES (in order):
+1. SURVIVAL: Avoid death from energy depletion (<20% = critical danger zone)
+2. DISEASE AVOIDANCE: Maintain distance from infected agents (red agents spread disease)
+3. ENERGY MANAGEMENT: Locate and consume resources when energy drops below 60%
+4. REPRODUCTION: Consider reproduction when energy >70% and age >30 steps
+5. SOCIAL STRATEGY: Leverage nearby agents for information or cooperation
+6. EXPLORATION: Discover new areas when immediate needs are met
 
-Respond with a JSON object containing:
+REASONING GUIDELINES:
+- Be specific about WHY you're making each decision
+- Consider both immediate and long-term consequences  
+- Factor in your personality traits (${personality} agents have different risk tolerances)
+- Account for environmental pressures and social dynamics
+- Prioritize survival over all other goals
+
+OUTPUT FORMAT - Respond with valid JSON only:
 {
-  "reasoning": "Brief explanation of your decision logic",
-  "action": "primary_action", // One of: forage, avoid, reproduce, explore, rest
-  "intensity": 0.8, // Movement intensity 0.1-1.0
-  "direction": "toward_resource|away_from_infected|random", // Movement direction strategy
-  "confidence": 0.9 // How confident you are in this decision (0.1-1.0)
+  "reasoning": "Clear explanation of your decision logic and key factors considered",
+  "action": "primary_action",
+  "intensity": 0.8,
+  "direction": "strategic_direction", 
+  "confidence": 0.9
 }
 
-Make your decision now:`;
+Valid actions: forage, avoid, reproduce, explore, rest, help
+Valid directions: toward_resource, away_from_infected, toward_agents, random
+Intensity: 0.1 (minimal) to 1.0 (maximum effort)
+Confidence: 0.1 (uncertain) to 1.0 (very confident)
+
+Analyze your situation and make your decision now:`;
 
     return systemPrompt;
+  }
+
+  analyzeSocialContext(nearbyAgents) {
+    if (nearbyAgents.length === 0) return 'isolated';
+    
+    const infected = nearbyAgents.filter(a => a.status === 'Infected').length;
+    const recovered = nearbyAgents.filter(a => a.status === 'Recovered').length;
+    const causalAgents = nearbyAgents.filter(a => a.type === 'CausalAgent').length;
+    
+    if (infected > nearbyAgents.length * 0.6) return 'high_infection_zone';
+    if (recovered > nearbyAgents.length * 0.5) return 'recovery_community';
+    if (causalAgents > nearbyAgents.length * 0.7) return 'intelligent_cluster';
+    if (nearbyAgents.length > 5) return 'crowded';
+    return 'social_group';
   }
 
   /**
@@ -179,11 +221,11 @@ Make your decision now:`;
     const startTime = Date.now();
     this.stats.totalRequests++;
     
-    // Check connection first
+    // Check connection first with enhanced validation
     const isConnected = await this.checkConnection();
     if (!isConnected) {
       this.stats.failedRequests++;
-      throw new Error('LLM service not available');
+      throw new Error('LLM service not available - Ollama may not be running or accessible');
     }
     
     const model = options.model || this.getBestAvailableModel();
@@ -203,7 +245,10 @@ Make your decision now:`;
           num_predict: maxTokens,
           top_k: 40,
           top_p: 0.9,
-          stop: ["\n\n", "###"]
+          stop: ["\n\nHuman:", "###", "\n---"],
+          // Enhanced stop sequences for better response quality
+          repeat_penalty: 1.1,
+          seed: options.seed || -1 // Allow deterministic responses if seed provided
         }
       };
       
@@ -211,7 +256,8 @@ Make your decision now:`;
         console.log(`🤖 LLM Request to ${model}:`, { 
           promptLength: prompt.length, 
           temperature, 
-          maxTokens 
+          maxTokens,
+          timeout: this.timeout
         });
       }
       
@@ -228,13 +274,19 @@ Make your decision now:`;
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}. ${errorText}`);
       }
       
       const data = await response.json();
       
-      if (!data.response) {
-        throw new Error('Empty response from LLM');
+      if (!data.response || data.response.trim().length === 0) {
+        throw new Error('Empty or invalid response from LLM model');
+      }
+      
+      // Enhanced response validation
+      if (data.response.length < 10) {
+        console.warn(`🤖 Suspiciously short LLM response: "${data.response}"`);
       }
       
       // Update performance stats
@@ -247,26 +299,63 @@ Make your decision now:`;
         console.log(`🤖 LLM Response (${responseTime}ms):`, {
           model: model,
           responseLength: data.response.length,
-          done: data.done
+          done: data.done,
+          totalDuration: data.total_duration,
+          loadDuration: data.load_duration,
+          promptEvalCount: data.prompt_eval_count,
+          evalCount: data.eval_count
         });
       }
       
       return {
-        response: data.response,
+        response: data.response.trim(),
         model: model,
         responseTime: responseTime,
-        success: true
+        success: true,
+        metadata: {
+          totalDuration: data.total_duration,
+          loadDuration: data.load_duration,
+          promptEvalCount: data.prompt_eval_count,
+          evalCount: data.eval_count,
+          evalDuration: data.eval_duration
+        }
       };
       
     } catch (error) {
       this.stats.failedRequests++;
       
-      if (this.debug) {
-        console.error(`🤖 LLM Request failed:`, error.message);
+      let errorMessage = error.message;
+      let errorType = 'unknown';
+      
+      if (error.name === 'AbortError') {
+        errorType = 'timeout';
+        errorMessage = `Request timed out after ${this.timeout}ms`;
+      } else if (error.message.includes('ECONNREFUSED')) {
+        errorType = 'connection_refused';
+        errorMessage = 'Connection refused - Ollama may not be running';
+      } else if (error.message.includes('fetch')) {
+        errorType = 'network';
+        errorMessage = 'Network error - Check Ollama endpoint configuration';
       }
       
-      // Re-throw for handling by calling code
-      throw new Error(`LLM request failed: ${error.message}`);
+      if (this.debug) {
+        console.error(`🤖 LLM Request failed (${errorType}):`, {
+          endpoint: this.endpoint,
+          model: model,
+          error: error.message,
+          timeout: this.timeout,
+          attempt: this.stats.totalRequests
+        });
+      }
+      
+      // Enhanced error for better debugging
+      const enhancedError = new Error(`LLM request failed (${errorType}): ${errorMessage}`);
+      enhancedError.type = errorType;
+      enhancedError.originalError = error;
+      enhancedError.endpoint = this.endpoint;
+      enhancedError.model = model;
+      
+      throw enhancedError;
     }
   }
 
@@ -275,24 +364,49 @@ Make your decision now:`;
    */
   parseLLMResponse(response) {
     try {
-      // Try to extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const jsonStr = jsonMatch[0];
+      // Enhanced JSON extraction with multiple fallback patterns
+      let jsonStr = null;
+      
+      // Try to find JSON object in response
+      const jsonMatches = [
+        response.match(/\{[\s\S]*\}/), // Standard JSON object
+        response.match(/```json\s*([\s\S]*?)\s*```/), // JSON in code blocks
+        response.match(/```\s*([\s\S]*?)\s*```/), // Generic code blocks
+        response.match(/\{\s*["\']reasoning["\'][\s\S]*\}/) // Reasoning-specific pattern
+      ];
+      
+      for (const match of jsonMatches) {
+        if (match) {
+          jsonStr = match[1] || match[0];
+          break;
+        }
+      }
+      
+      if (jsonStr) {
+        // Clean up common JSON formatting issues
+        jsonStr = jsonStr
+          .replace(/'/g, '"') // Replace single quotes with double quotes
+          .replace(/,\s*}/g, '}') // Remove trailing commas
+          .replace(/,\s*]/g, ']') // Remove trailing commas in arrays
+          .trim();
+          
         const parsed = JSON.parse(jsonStr);
         
-        // Validate required fields
-        if (!parsed.action || !parsed.reasoning) {
-          throw new Error('Missing required fields in LLM response');
+        // Enhanced validation with better defaults
+        if (!parsed.reasoning || typeof parsed.reasoning !== 'string') {
+          throw new Error('Missing or invalid reasoning field');
         }
         
-        // Normalize and validate values
         const normalizedResponse = {
-          reasoning: String(parsed.reasoning).substring(0, 500), // Limit length
+          reasoning: String(parsed.reasoning).substring(0, 800), // Increased limit for better reasoning
           action: this.validateAction(parsed.action),
-          intensity: this.clamp(parseFloat(parsed.intensity) || 0.5, 0.1, 1.0),
+          intensity: this.clamp(parseFloat(parsed.intensity) || 0.6, 0.1, 1.0),
           direction: this.validateDirection(parsed.direction),
-          confidence: this.clamp(parseFloat(parsed.confidence) || 0.7, 0.1, 1.0)
+          confidence: this.clamp(parseFloat(parsed.confidence) || 0.7, 0.1, 1.0),
+          // Additional metadata for debugging
+          originalAction: parsed.action,
+          originalDirection: parsed.direction,
+          parseMethod: 'json'
         };
         
         return {
@@ -302,25 +416,31 @@ Make your decision now:`;
           parsed: true
         };
       } else {
-        // Fallback: extract reasoning from natural language
+        // Enhanced fallback: extract reasoning from natural language with better heuristics
         return this.parseNaturalLanguageResponse(response);
       }
     } catch (error) {
-      if (this.debug) {
-        console.warn(`🤖 Failed to parse LLM response:`, error.message);
+      console.warn(`🤖 JSON parsing failed: ${error.message}, attempting natural language parsing`);
+      
+      // Try natural language parsing as fallback
+      const nlResult = this.parseNaturalLanguageResponse(response);
+      
+      if (nlResult.confidence > 0.3) {
+        return nlResult;
       }
       
-      // Return a fallback decision
+      // Last resort: return a safe default decision
       return {
-        reasoning: "Failed to parse LLM response, using fallback logic",
+        reasoning: `Failed to parse LLM response: "${error.message}". Using conservative survival strategy.`,
         action: "explore",
-        intensity: 0.5,
+        intensity: 0.4,
         direction: "random",
-        confidence: 0.3,
+        confidence: 0.2,
         raw: response,
         success: false,
         parsed: false,
-        error: error.message
+        error: error.message,
+        parseMethod: 'emergency_fallback'
       };
     }
   }
@@ -334,40 +454,128 @@ Make your decision now:`;
     let intensity = 0.5;
     let direction = "random";
     let confidence = 0.6;
+    let reasoning = response.substring(0, 300);
     
-    // Detect primary action from keywords
-    if (text.includes("food") || text.includes("forage") || text.includes("resource")) {
-      action = "forage";
-      direction = "toward_resource";
-      intensity = 0.8;
-    } else if (text.includes("avoid") || text.includes("flee") || text.includes("infected")) {
-      action = "avoid";
-      direction = "away_from_infected";
-      intensity = 0.7;
-    } else if (text.includes("reproduce") || text.includes("mate") || text.includes("offspring")) {
-      action = "reproduce";
-      intensity = 0.3;
-    } else if (text.includes("rest") || text.includes("wait") || text.includes("conserve")) {
-      action = "rest";
-      intensity = 0.1;
+    // Enhanced action detection with priority scoring
+    const actionPatterns = {
+      forage: {
+        keywords: ['food', 'forage', 'resource', 'energy', 'eat', 'hungry', 'starv', 'feed', 'nourish'],
+        priority: 0,
+        defaultIntensity: 0.8,
+        defaultDirection: 'toward_resource'
+      },
+      avoid: {
+        keywords: ['avoid', 'flee', 'escape', 'danger', 'infected', 'disease', 'sick', 'threat', 'run', 'away'],
+        priority: 0,
+        defaultIntensity: 0.9,
+        defaultDirection: 'away_from_infected'
+      },
+      reproduce: {
+        keywords: ['reproduce', 'mate', 'offspring', 'breed', 'procreate', 'family', 'children'],
+        priority: 0,
+        defaultIntensity: 0.3,
+        defaultDirection: 'toward_agents'
+      },
+      rest: {
+        keywords: ['rest', 'wait', 'conserve', 'pause', 'stay', 'idle', 'calm', 'recover'],
+        priority: 0,
+        defaultIntensity: 0.1,
+        defaultDirection: 'random'
+      },
+      help: {
+        keywords: ['help', 'assist', 'aid', 'support', 'cooperate', 'share', 'collaborate'],
+        priority: 0,
+        defaultIntensity: 0.6,
+        defaultDirection: 'toward_agents'
+      },
+      explore: {
+        keywords: ['explore', 'search', 'wander', 'discover', 'investigate', 'scout', 'roam'],
+        priority: 0,
+        defaultIntensity: 0.5,
+        defaultDirection: 'random'
+      }
+    };
+    
+    // Score each action based on keyword presence and context
+    Object.entries(actionPatterns).forEach(([actionName, pattern]) => {
+      pattern.keywords.forEach(keyword => {
+        const matches = (text.match(new RegExp(keyword, 'g')) || []).length;
+        pattern.priority += matches;
+        
+        // Bonus for keywords in key positions (beginning, emphasis)
+        if (text.indexOf(keyword) < 50) pattern.priority += 0.5; // Early mention
+        if (text.includes(`"${keyword}"`) || text.includes(`*${keyword}*`)) pattern.priority += 0.5; // Emphasis
+      });
+    });
+    
+    // Select action with highest priority
+    const selectedAction = Object.entries(actionPatterns)
+      .sort(([,a], [,b]) => b.priority - a.priority)[0];
+    
+    if (selectedAction[1].priority > 0) {
+      action = selectedAction[0];
+      intensity = selectedAction[1].defaultIntensity;
+      direction = selectedAction[1].defaultDirection;
+      confidence = Math.min(0.8, 0.4 + selectedAction[1].priority * 0.1);
     }
     
-    // Extract intensity cues
-    if (text.includes("urgent") || text.includes("critical") || text.includes("danger")) {
-      intensity = Math.min(1.0, intensity + 0.2);
-    } else if (text.includes("careful") || text.includes("slow")) {
+    // Intensity modifiers based on context
+    const urgencyKeywords = ['urgent', 'critical', 'immediate', 'emergency', 'crucial', 'vital'];
+    const cautionKeywords = ['careful', 'slow', 'gentle', 'cautious', 'gradual', 'moderate'];
+    
+    if (urgencyKeywords.some(keyword => text.includes(keyword))) {
+      intensity = Math.min(1.0, intensity + 0.3);
+      confidence += 0.1;
+    }
+    
+    if (cautionKeywords.some(keyword => text.includes(keyword))) {
       intensity = Math.max(0.1, intensity - 0.2);
+      confidence += 0.05;
     }
     
+    // Confidence modifiers
+    const confidenceKeywords = ['certain', 'sure', 'confident', 'definitely', 'clearly'];
+    const uncertaintyKeywords = ['maybe', 'perhaps', 'might', 'possibly', 'uncertain', 'unclear'];
+    
+    if (confidenceKeywords.some(keyword => text.includes(keyword))) {
+      confidence = Math.min(1.0, confidence + 0.2);
+    }
+    
+    if (uncertaintyKeywords.some(keyword => text.includes(keyword))) {
+      confidence = Math.max(0.2, confidence - 0.2);
+    }
+    
+    // Extract reasoning if available
+    const reasoningPatterns = [
+      /because\s+([^.!?]+)/i,
+      /reasoning:\s*([^.!?\n]+)/i,
+      /i think\s+([^.!?]+)/i,
+      /therefore\s+([^.!?]+)/i,
+      /since\s+([^.!?]+)/i
+    ];
+    
+    for (const pattern of reasoningPatterns) {
+      const match = response.match(pattern);
+      if (match && match[1]) {
+        reasoning = match[1].trim() + ". " + reasoning.substring(0, 200);
+        confidence += 0.1;
+        break;
+      }
+    }
+
     return {
-      reasoning: response.substring(0, 200) + "...",
+      reasoning: reasoning,
       action: action,
       intensity: intensity,
       direction: direction,
-      confidence: confidence,
+      confidence: Math.min(1.0, confidence),
       raw: response,
       success: true,
-      parsed: false // Natural language parsing
+      parsed: false, // Natural language parsing
+      parseMethod: 'natural_language',
+      actionPriorities: Object.fromEntries(
+        Object.entries(actionPatterns).map(([name, pattern]) => [name, pattern.priority])
+      )
     };
   }
 
