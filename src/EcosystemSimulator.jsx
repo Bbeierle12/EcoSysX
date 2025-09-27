@@ -1546,6 +1546,18 @@ class Agent {
     return TIME_V1.stepToDays(this.getAge(currentStep));
   }
 
+  // Temporary fallback getter for backwards compatibility with methods that don't have currentStep
+  get age() {
+    // This is a fallback - ideally all methods should use getAge(currentStep)
+    // Return 0 for new agents, or a rough estimate based on birth_step
+    if (typeof this.birth_step === 'undefined' || this.birth_step === null) {
+      return 0; // New agents default to age 0
+    }
+    // For existing agents, assume current step is around 100 (rough estimate)
+    const estimatedCurrentStep = 100;
+    return Math.max(0, estimatedCurrentStep - this.birth_step);
+  }
+
   generateRandomGenotype() {
     return {
       speed: Math.random() * 2 + 0.5,
@@ -1663,7 +1675,7 @@ class Agent {
     this.forageWithWeatherEffects(environment, weatherEffects);
 
     // Get observation and apply weather-adjusted actions
-    const observation = this.getObservation(environment, agents);
+    const observation = this.getObservation(environment, agents, currentStep);
     const action = this.learningPolicy.getAction(observation);
     
     // Weather affects movement
@@ -1745,7 +1757,7 @@ class Agent {
     });
   }
 
-  getObservation(environment, agents) {
+  getObservation(environment, agents, currentStep) {
     const nearbyAgents = agents.filter(agent => 
       agent.id !== this.id && this.distanceTo(agent) < 8
     );
@@ -1757,7 +1769,7 @@ class Agent {
       energy: this.energy,
       nearbyCount: nearbyAgents.length,
       nearbyInfected: nearbyAgents.filter(a => a.status === 'Infected').length,
-      age: age,
+      age: this.getAge(currentStep),
       nearestResourceDistance: nearestResource ? nearestResource.distance : 100,
       status: this.status
     };
@@ -3706,20 +3718,20 @@ class CausalAgent extends Agent {
   }
 
   // Override update method to add communication
-  update(environment, agents, isSimulationRunning = true) {
+  update(environment, agents, currentStep, isSimulationRunning = true) {
     // Call parent update first
-    const result = super.update(environment, agents, isSimulationRunning);
+    const result = super.update(environment, agents, currentStep, isSimulationRunning);
     
     // Add communication logic and information processing if simulation is running
     if (isSimulationRunning && this.isActive) {
       this.handleCommunication(agents, environment);
       this.updateSocialMemory(agents, environment);
-      this.processInformationDecay(environment.cycleStep || 0);
+      this.processInformationDecay(currentStep);
       this.processHelpRequests(agents);
       
       // Trigger LLM reasoning asynchronously if needed
       if (this.llmAvailable && Math.random() < this.reasoningFrequency) {
-        this.triggerAsyncReasoning(environment, agents);
+        this.triggerAsyncReasoning(environment, agents, currentStep);
       }
     }
     
@@ -3847,14 +3859,14 @@ class CausalAgent extends Agent {
     }
   }
 
-  async triggerAsyncReasoning(environment, agents) {
+  async triggerAsyncReasoning(environment, agents, currentStep) {
     // Don't start new reasoning if one is already pending
     if (this.pendingReasoning) return;
     
     try {
       this.pendingReasoning = true;
       
-      const observation = this.getObservation(environment, agents);
+      const observation = this.getObservation(environment, agents, currentStep);
       const reasoningResult = await this.simulateLLMReasoning(observation, agents);
       
       if (reasoningResult && reasoningResult.action) {
@@ -4660,71 +4672,7 @@ class Environment {
   }
 
   initializeTerrainFeatures() {
-    // Add shelter areas - provide protection during extreme weather
-    for (let i = 0; i < 5; i++) {
-      const shelterPos = {
-        x: (Math.random() - 0.5) * 40,
-        z: (Math.random() - 0.5) * 40
-      };
-      this.terrainFeatures.set(`shelter_${i}`, {
-        type: 'shelter',
-        position: shelterPos,
-        radius: 6,
-        capacity: 8, // Max agents that can benefit
-        currentOccupants: 0,
-        weatherProtection: 0.7, // Reduces weather stress by 70%
-        energyBonus: 0.1 // Small energy regeneration bonus
-      });
-    }
-    
-    // Add resource-rich oases - high resource spawn areas
-    for (let i = 0; i < 3; i++) {
-      const oasisPos = {
-        x: (Math.random() - 0.5) * 35,
-        z: (Math.random() - 0.5) * 35
-      };
-      this.terrainFeatures.set(`oasis_${i}`, {
-        type: 'oasis',
-        position: oasisPos,
-        radius: 8,
-        resourceMultiplier: 3.0, // 3x resource spawn rate
-        temperatureModifier: -3, // Cooler by 3 degrees
-        humidityBonus: 0.5 // Better for survival
-      });
-    }
-    
-    // Add elevated areas - strategic advantage but more weather exposure
-    for (let i = 0; i < 4; i++) {
-      const hillPos = {
-        x: (Math.random() - 0.5) * 45,
-        z: (Math.random() - 0.5) * 45
-      };
-      this.terrainFeatures.set(`hill_${i}`, {
-        type: 'hill',
-        position: hillPos,
-        radius: 10,
-        elevation: 5,
-        visibilityBonus: 2.0, // Can see farther
-        weatherExposure: 1.4, // More affected by weather
-        windSpeedMultiplier: 1.3
-      });
-    }
-    
-    // Add dangerous zones - higher infection risk but more resources
-    for (let i = 0; i < 2; i++) {
-      const dangerPos = {
-        x: (Math.random() - 0.5) * 50,
-        z: (Math.random() - 0.5) * 50
-      };
-      this.terrainFeatures.set(`danger_${i}`, {
-        type: 'contaminated',
-        position: dangerPos,
-        radius: 7,
-        infectionRisk: 0.3, // 30% higher infection chance
-        resourceMultiplier: 2.5, // High rewards for high risk
-        energyDrain: 0.2 // Constant energy drain
-      });
-    }
+    // Terrain features disabled - empty method
   }
 
   update() {
@@ -5331,7 +5279,7 @@ class PlayerAgent extends Agent {
   }
 
   // Enhanced manual reproduction with mate selection
-  attemptManualReproduction(agents) {
+  attemptManualReproduction(agents, currentStep = 0) {
     if (!this.canReproduce()) return null;
     
     // Find suitable mates within range
@@ -5355,7 +5303,7 @@ class PlayerAgent extends Agent {
     });
     
     // Create enhanced offspring with player bonuses
-    const offspring = this.reproduceWithMate(bestMate);
+    const offspring = this.reproduceWithMate(bestMate, currentStep);
     
     if (offspring) {
       this.playerStats.reproductions++;
@@ -6257,9 +6205,8 @@ const EcosystemSimulator = () => {
           agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
         }
         
-        // Ensure age is 0 (should be from constructor but let's be explicit)
-        agent.age = 0;
-        console.log(`Created initial agent ${agent.id} with age ${agent.age}`); // DEBUG
+        // Agent age is now handled by birth_step (initialized in constructor)
+        console.log(`Created initial agent ${agent.id} with birth_step ${agent.birth_step}`); // DEBUG
         
         createAgentMesh(agent, scene);
         initialAgents.push(agent);
@@ -6491,11 +6438,16 @@ const EcosystemSimulator = () => {
 
   const simulationStep = useCallback(() => {
     if (!sceneRef.current || !isRunning) return;
-
-    // Update environment FIRST to avoid temporal dead zone for newEnvironment usage
-    const updatedEnvironment = environment.update();
-    // Update terrain occupancy with latest agents snapshot (pre-mutation)
-    updatedEnvironment.updateTerrainOccupancy(agents);
+    
+    try {
+      console.log('🔄 Simulation step starting:', step); // DEBUG
+      
+      // Update environment FIRST to avoid temporal dead zone for newEnvironment usage
+      console.log('📍 Updating environment...'); // DEBUG
+      const updatedEnvironment = environment.update();
+      // Update terrain occupancy with latest agents snapshot (pre-mutation)
+      console.log('📍 Updating terrain occupancy...'); // DEBUG
+      updatedEnvironment.updateTerrainOccupancy(agents);
 
     setAgents(currentAgents => {
       const newAgents = [...currentAgents];
@@ -6741,6 +6693,14 @@ const EcosystemSimulator = () => {
       }
       return newStep;
     });
+    
+    } catch (error) {
+      console.error('🚨 Simulation step error:', error);
+      console.error('Stack trace:', error.stack);
+      console.error('Current step:', step);
+      console.error('Agents count:', agents.length);
+      setIsRunning(false); // Stop simulation on error
+    }
   }, [environment, agents, stats, gameOver, isRunning, trackPerformance, logPopulationDynamics]);
 
   useEffect(() => {
@@ -6869,9 +6829,8 @@ const EcosystemSimulator = () => {
         agent.infectionTimer = Math.floor(Math.random() * 20); // Random infection stage
       }
       
-      // Ensure age is 0 (it should be from constructor but let's be explicit)
-      agent.age = 0;
-      console.log(`Created reset agent ${agent.id} with age ${agent.age}`); // DEBUG
+      // Agent age is now handled by birth_step (initialized in constructor)
+      console.log(`Created reset agent ${agent.id} with birth_step ${agent.birth_step}`); // DEBUG
       
       createAgentMesh(agent, sceneRef.current);
       newAgents.push(agent);
@@ -7017,7 +6976,7 @@ const EcosystemSimulator = () => {
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <button
                   onClick={() => {
-                    if (playerAgentRef.current.activateReproduction()) {
+                    if (playerAgentRef.current.activateReproduction(step)) {
                       showNotification('💕 Reproduction mode activated - Move near a healthy agent', 'info');
                     } else {
                       showNotification('❌ Cannot reproduce - Need energy >60, age >25, no infection', 'warning');
@@ -7074,7 +7033,7 @@ const EcosystemSimulator = () => {
                 
                 <button
                   onClick={() => {
-                    const stats = playerAgentRef.current.getPerformanceSummary();
+                    const stats = playerAgentRef.current.getPerformanceSummary(step);
                     console.log('📊 Player Performance:', stats);
                     showNotification(`📊 Performance - Survival: ${stats.survivalRating}/100`, 'info');
                   }}
