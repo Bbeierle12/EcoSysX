@@ -1,6 +1,9 @@
 # Use Node.js official image
 FROM node:18-alpine
 
+# Install git and other build dependencies
+RUN apk add --no-cache git
+
 # Set working directory
 WORKDIR /app
 
