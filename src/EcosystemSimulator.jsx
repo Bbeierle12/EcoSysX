@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import * as d3 from 'd3';
+import { llmService } from './LLMService.js';
 
 // Message Types - Define globally
 const MessageTypes = {
@@ -1276,8 +1277,113 @@ class Agent {
     // Don't apply actions if not active
     if (!this.isActive) return;
     
+    // For CausalAgent, check if there's a queued LLM action to override
+    if (this instanceof CausalAgent && this.queuedAction) {
+      action = this.queuedAction;
+      this.queuedAction = null; // Clear after use
+    }
+    
     const moveIntensity = action.intensity * this.phenotype.maxSpeed;
     
+    // Handle different action types
+    if (action.type || action.llmAction) {
+      const actionType = action.type || action.llmAction;
+      
+      switch (actionType) {
+        case 'forage':
+          this.applyForageAction(action, environment, moveIntensity);
+          break;
+        case 'avoid':
+          this.applyAvoidanceAction(action, agents, moveIntensity);
+          break;
+        case 'reproduce':
+          this.applyReproductionAction(action, moveIntensity);
+          break;
+        case 'rest':
+          this.applyRestAction(action, moveIntensity);
+          break;
+        case 'explore':
+        default:
+          this.applyExploreAction(action, moveIntensity);
+          break;
+      }
+    } else {
+      // Fallback to original behavior for basic agents
+      this.applyDefaultAction(action, environment, moveIntensity);
+    }
+  }
+
+  applyForageAction(action, environment, moveIntensity) {
+    const nearestResource = this.findNearestResource(environment);
+    if (nearestResource) {
+      const dx = nearestResource.resource.position.x - this.position.x;
+      const dz = nearestResource.resource.position.z - this.position.z;
+      const magnitude = Math.sqrt(dx * dx + dz * dz);
+      
+      if (magnitude > 0) {
+        this.velocity.x += (dx / magnitude) * moveIntensity * 0.8;
+        this.velocity.z += (dz / magnitude) * moveIntensity * 0.8;
+      }
+    } else {
+      // No resources found, explore randomly
+      this.velocity.x += (Math.random() - 0.5) * moveIntensity * 0.3;
+      this.velocity.z += (Math.random() - 0.5) * moveIntensity * 0.3;
+    }
+  }
+
+  applyAvoidanceAction(action, agents, moveIntensity) {
+    // Find infected agents to avoid
+    const infectedAgents = agents?.filter(a => 
+      a.status === 'Infected' && 
+      a.id !== this.id && 
+      this.distanceTo(a) < 10
+    ) || [];
+    
+    if (infectedAgents.length > 0) {
+      // Calculate avoidance vector
+      let avoidX = 0;
+      let avoidZ = 0;
+      
+      infectedAgents.forEach(infected => {
+        const dx = this.position.x - infected.position.x;
+        const dz = this.position.z - infected.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        if (distance > 0) {
+          avoidX += (dx / distance) / infectedAgents.length;
+          avoidZ += (dz / distance) / infectedAgents.length;
+        }
+      });
+      
+      this.velocity.x += avoidX * moveIntensity;
+      this.velocity.z += avoidZ * moveIntensity;
+    } else {
+      // No infected nearby, move randomly
+      this.velocity.x += (Math.random() - 0.5) * moveIntensity * 0.3;
+      this.velocity.z += (Math.random() - 0.5) * moveIntensity * 0.3;
+    }
+  }
+
+  applyReproductionAction(action, moveIntensity) {
+    // Gentle movement to find potential mates
+    this.velocity.x += (Math.random() - 0.5) * moveIntensity * 0.4;
+    this.velocity.z += (Math.random() - 0.5) * moveIntensity * 0.4;
+  }
+
+  applyRestAction(action, moveIntensity) {
+    // Minimal movement, conserve energy
+    this.velocity.x += (Math.random() - 0.5) * moveIntensity * 0.1;
+    this.velocity.z += (Math.random() - 0.5) * moveIntensity * 0.1;
+  }
+
+  applyExploreAction(action, moveIntensity) {
+    // Standard exploration movement
+    this.velocity.x += (Math.random() - 0.5) * moveIntensity * 0.5;
+    this.velocity.z += (Math.random() - 0.5) * moveIntensity * 0.5;
+  }
+
+  applyDefaultAction(action, environment, moveIntensity) {
+    // Original logic for backward compatibility
     if (this.energy < 40) {
       const nearestResource = this.findNearestResource(environment);
       if (nearestResource) {
@@ -1416,18 +1522,218 @@ class CausalAgent extends Agent {
   }
 
   async simulateLLMReasoning(observation, agents) {
+    // Try real LLM first if available
+    if (this.llmAvailable && llmService) {
+      try {
+        return await this.realLLMReasoning(observation, agents);
+      } catch (error) {
+        console.warn(`🤖 LLM reasoning failed for agent ${this.id}, falling back to simulation:`, error.message);
+        // Fall back to simulated reasoning
+        return this.fallbackSimulatedReasoning(observation, agents);
+      }
+    }
+    
+    // Use simulated reasoning if LLM not available
+    return this.fallbackSimulatedReasoning(observation, agents);
+  }
+
+  async realLLMReasoning(observation, agents) {
+    const startTime = Date.now();
+    
+    try {
+      // Build agent data for prompt
+      const agentData = {
+        personality: this.personality,
+        id: this.id,
+        age: this.age,
+        energy: this.energy,
+        status: this.status
+      };
+      
+      // Enhanced observation with nearby agents analysis
+      const enhancedObservation = {
+        ...observation,
+        nearbyAgents: agents.filter(a => 
+          a.id !== this.id && this.distanceTo(a) < 8
+        ).map(a => ({
+          id: a.id.substring(0, 10), // Truncate for privacy
+          distance: Math.round(this.distanceTo(a) * 10) / 10,
+          status: a.status,
+          energy: Math.round(a.energy),
+          type: a.constructor.name
+        }))
+      };
+      
+      // Build optimized prompt
+      const prompt = llmService.buildEcosystemPrompt(agentData, enhancedObservation, agents);
+      
+      // Call LLM service
+      const llmResult = await llmService.callLLM(prompt, {
+        temperature: 0.7,
+        maxTokens: 256
+      });
+      
+      if (!llmResult.success) {
+        throw new Error('LLM call unsuccessful');
+      }
+      
+      // Parse the response
+      const parsedResponse = llmService.parseLLMResponse(llmResult.response);
+      
+      if (!parsedResponse.success) {
+        throw new Error('Failed to parse LLM response');
+      }
+      
+      // Convert LLM decision to agent action format
+      const action = this.convertLLMToAction(parsedResponse, observation);
+      
+      // Track reasoning history for debugging
+      const reasoningResult = {
+        action: action,
+        chainOfThought: {
+          thoughts: [
+            {
+              step: 1,
+              type: "llm_analysis",
+              content: `LLM Model: ${llmResult.model} | Response Time: ${llmResult.responseTime}ms`
+            },
+            {
+              step: 2,
+              type: "llm_reasoning",
+              content: parsedResponse.reasoning
+            },
+            {
+              step: 3,
+              type: "action_decision",
+              content: `Decided on: ${parsedResponse.action} (intensity: ${parsedResponse.intensity}, confidence: ${parsedResponse.confidence})`
+            }
+          ],
+          conclusion: parsedResponse.reasoning
+        },
+        confidence: parsedResponse.confidence,
+        reasoning: parsedResponse.reasoning,
+        llmData: {
+          model: llmResult.model,
+          responseTime: llmResult.responseTime,
+          parsed: parsedResponse.parsed,
+          raw: parsedResponse.raw
+        },
+        isRealLLM: true
+      };
+      
+      // Store for agent inspection
+      this.lastReasoning = reasoningResult;
+      this.reasoningHistory.push({
+        timestamp: Date.now(),
+        observation: observation,
+        decision: parsedResponse,
+        success: true,
+        method: 'real_llm'
+      });
+      
+      // Limit history size
+      if (this.reasoningHistory.length > 10) {
+        this.reasoningHistory.shift();
+      }
+      
+      this.decisionCount++;
+      
+      // Update success rate tracking
+      const successfulDecisions = this.reasoningHistory.filter(r => r.success).length;
+      this.reasoningSuccessRate = successfulDecisions / this.reasoningHistory.length;
+      
+      console.log(`🧠 Agent ${this.id}: Real LLM reasoning complete (${llmResult.responseTime}ms) - Action: ${parsedResponse.action}`);
+      
+      return reasoningResult;
+      
+    } catch (error) {
+      // Track failed reasoning attempt
+      this.reasoningHistory.push({
+        timestamp: Date.now(),
+        observation: observation,
+        decision: null,
+        success: false,
+        method: 'real_llm',
+        error: error.message
+      });
+      
+      console.error(`🤖 Real LLM reasoning failed for agent ${this.id}:`, error.message);
+      
+      // Re-throw to trigger fallback
+      throw error;
+    }
+  }
+
+  convertLLMToAction(parsedResponse, observation) {
+    const { action, intensity, direction, confidence } = parsedResponse;
+    
+    // Base intensity and direction
+    let moveIntensity = intensity * this.phenotype.maxSpeed;
+    let moveDirection = Math.random() * Math.PI * 2; // Default random
+    let avoidance = 0;
+    
+    switch (action) {
+      case 'forage':
+        // Move toward nearest resource if available
+        if (observation.nearestResourceDistance < 50) {
+          moveIntensity = Math.max(0.6, intensity) * this.phenotype.maxSpeed;
+          // Direction will be set by applyAction method toward resource
+        }
+        break;
+        
+      case 'avoid':
+        // Move away from infected agents
+        avoidance = Math.max(0.5, intensity);
+        moveIntensity = Math.max(0.7, intensity) * this.phenotype.maxSpeed;
+        break;
+        
+      case 'reproduce':
+        // Lower movement, seek other agents
+        moveIntensity = Math.min(0.4, intensity) * this.phenotype.maxSpeed;
+        break;
+        
+      case 'rest':
+        // Minimal movement
+        moveIntensity = Math.min(0.2, intensity) * this.phenotype.maxSpeed;
+        break;
+        
+      case 'explore':
+      default:
+        // Standard exploratory movement
+        moveIntensity = intensity * this.phenotype.maxSpeed;
+        break;
+    }
+    
+    return {
+      type: action,
+      intensity: moveIntensity / this.phenotype.maxSpeed, // Normalize back
+      direction: moveDirection,
+      avoidance: avoidance,
+      reasoning: parsedResponse.reasoning,
+      confidence: confidence,
+      llmAction: action
+    };
+  }
+
+  fallbackSimulatedReasoning(observation, agents) {
     const prompt = this.buildCausalPrompt(observation, agents);
     const chainOfThought = this.generateChainOfThought(prompt, observation);
     const action = this.reasonToAction(chainOfThought, observation);
     
     this.decisionCount++;
     
-    return {
+    const result = {
       action: action,
       chainOfThought: chainOfThought,
       confidence: Math.random() * 0.4 + 0.6,
-      reasoning: chainOfThought.conclusion
+      reasoning: chainOfThought.conclusion,
+      isRealLLM: false
     };
+    
+    // Store for agent inspection
+    this.lastReasoning = result;
+    
+    return result;
   }
 
   buildCausalPrompt(observation, agents) {
@@ -1716,9 +2022,51 @@ class CausalAgent extends Agent {
     if (isSimulationRunning && this.isActive) {
       this.handleCommunication(agents, environment);
       this.updateSocialMemory(agents);
+      
+      // Trigger LLM reasoning asynchronously if needed
+      if (this.llmAvailable && Math.random() < this.reasoningFrequency) {
+        this.triggerAsyncReasoning(environment, agents);
+      }
     }
     
     return result;
+  }
+
+  async triggerAsyncReasoning(environment, agents) {
+    // Don't start new reasoning if one is already pending
+    if (this.pendingReasoning) return;
+    
+    try {
+      this.pendingReasoning = true;
+      
+      const observation = this.getObservation(environment, agents);
+      const reasoningResult = await this.simulateLLMReasoning(observation, agents);
+      
+      if (reasoningResult && reasoningResult.action) {
+        // Queue the action for the next update cycle
+        this.queuedAction = reasoningResult.action;
+        
+        // Update social memory trust based on decision quality
+        if (reasoningResult.confidence > 0.8) {
+          // High confidence decisions might influence trust of nearby agents
+          const nearbyAgents = agents.filter(a => 
+            a !== this && 
+            a instanceof CausalAgent && 
+            this.distanceTo(a) < 6
+          );
+          
+          nearbyAgents.forEach(agent => {
+            if (agent.socialMemory) {
+              agent.socialMemory.updateTrust(this.id, 0.01, 'high_confidence_decision');
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.warn(`Async reasoning failed for agent ${this.id}:`, error.message);
+    } finally {
+      this.pendingReasoning = false;
+    }
   }
 
   handleCommunication(agents, environment) {
@@ -2178,7 +2526,15 @@ const EcosystemSimulator = () => {
     rlAgents: 0,
     reasoningEvents: 0,
     communicationEvents: 0,
-    activeMessages: 0
+    activeMessages: 0,
+    llmStats: {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      avgResponseTime: 0,
+      successRate: 0,
+      fallbackUsed: 0
+    }
   });
 
   // Analysis utility functions
@@ -2452,7 +2808,9 @@ const EcosystemSimulator = () => {
             knownResources: clickedAgent.knownResourceLocations?.length || 0,
             dangerZones: clickedAgent.dangerZones?.length || 0,
             helpRequests: clickedAgent.helpRequests?.length || 0,
-            avgTrust: clickedAgent.calculateAverageTrust ? clickedAgent.calculateAverageTrust() : 0.5
+            avgTrust: clickedAgent.calculateAverageTrust ? clickedAgent.calculateAverageTrust() : 0.5,
+            isRealLLM: clickedAgent.lastReasoning.isRealLLM,
+            llmData: clickedAgent.lastReasoning.llmData
           });
         }
       }
@@ -2510,7 +2868,7 @@ const EcosystemSimulator = () => {
     };
   }, []);
 
-  // Check LLM (Ollama) connection status
+  // Check LLM (Ollama) connection status with enhanced error handling
   useEffect(() => {
     let isCancelled = false;
     let checkInterval;
@@ -2519,54 +2877,49 @@ const EcosystemSimulator = () => {
       if (isCancelled) return;
       
       try {
-        const endpoint = llmConfig.endpoint || 'http://localhost:11434';
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // Reduced timeout
+        // Update LLM service with current config
+        if (llmService && llmConfig.endpoint) {
+          llmService.updateConfig({ 
+            endpoint: llmConfig.endpoint,
+            debug: true
+          });
+        }
         
-        const response = await fetch(`${endpoint}/api/tags`, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-          signal: controller.signal
-        });
+        const isConnected = await llmService.checkConnection();
         
-        clearTimeout(timeoutId);
-        
-        if (response.ok && !isCancelled) {
-          const data = await response.json();
-          const hasModel = data.models?.some(m => 
-            m.name.includes('gpt') || 
-            m.name.includes('llama') || 
-            m.name.includes('mistral') || 
-            m.name.includes('codellama')
-          );
+        if (isConnected && !isCancelled) {
+          const stats = llmService.getStats();
           
           // Only update if status actually changed
           setLLMConfig(prev => {
-            if (prev.ollamaStatus !== 'connected' || prev.enabled !== hasModel) {
-              console.log(`🤖 Ollama Status: Connected. LLM ${hasModel ? 'ENABLED' : 'NO MODELS'}`);
+            if (prev.ollamaStatus !== 'connected' || prev.enabled !== isConnected) {
+              console.log(`🤖 Ollama Status: Connected to ${llmService.getBestAvailableModel()}`);
               
               // Update agents only when status changes
               setTimeout(() => {
                 setAgents(currentAgents => {
                   return currentAgents.map(agent => {
-                    if (agent instanceof CausalAgent && agent.llmAvailable !== hasModel) {
-                      agent.llmAvailable = hasModel;
-                      agent.reasoningMode = hasModel;
+                    if (agent instanceof CausalAgent && agent.llmAvailable !== isConnected) {
+                      agent.llmAvailable = isConnected;
+                      agent.reasoningMode = true;
+                      console.log(`🧠 Agent ${agent.id}: LLM capabilities updated`);
                     }
                     return agent;
                   });
                 });
               }, 0);
               
-              if (hasModel && prev.ollamaStatus !== 'connected') {
-                showNotification('🧠 LLM Connected & Ready!', 'success');
+              if (isConnected && prev.ollamaStatus !== 'connected') {
+                showNotification(`🧠 LLM Connected: ${llmService.getBestAvailableModel()}`, 'success');
               }
             }
             
             return { 
               ...prev, 
               ollamaStatus: 'connected',
-              enabled: hasModel
+              enabled: isConnected,
+              currentModel: llmService.getBestAvailableModel(),
+              availableModels: stats.availableModels || 0
             };
           });
         } else if (!isCancelled) {
@@ -2592,7 +2945,13 @@ const EcosystemSimulator = () => {
               }, 0);
             }
             
-            return { ...prev, ollamaStatus: 'disconnected', enabled: false };
+            return { 
+              ...prev, 
+              ollamaStatus: 'disconnected', 
+              enabled: false,
+              currentModel: null,
+              availableModels: 0
+            };
           });
         }
       }
@@ -2601,14 +2960,14 @@ const EcosystemSimulator = () => {
     // Initial connection check
     checkOllamaConnection();
     
-    // Recheck every 60 seconds (less frequent)
-    checkInterval = setInterval(checkOllamaConnection, 60000);
+    // Recheck every 30 seconds (more frequent for better UX)
+    checkInterval = setInterval(checkOllamaConnection, 30000);
     
     return () => {
       isCancelled = true;
       if (checkInterval) clearInterval(checkInterval);
     };
-  }, []); // Remove dependencies to prevent constant re-running
+  }, [llmConfig.endpoint]); // Re-check when endpoint changes
 
   const simulationStep = useCallback(() => {
     if (!sceneRef.current || !isRunning) return;
@@ -2719,7 +3078,15 @@ const EcosystemSimulator = () => {
         rlAgents,
         reasoningEvents: 0,
         communicationEvents: window.ecosystemStats?.communicationEvents || 0,
-        activeMessages: window.ecosystemStats?.activeMessages || 0
+        activeMessages: window.ecosystemStats?.activeMessages || 0,
+        llmStats: llmService ? llmService.getStats() : {
+          totalRequests: 0,
+          successfulRequests: 0,
+          failedRequests: 0,
+          avgResponseTime: 0,
+          successRate: 0,
+          fallbackUsed: 0
+        }
       });
 
       // Record analytics data for current step
@@ -3171,8 +3538,10 @@ const EcosystemSimulator = () => {
             }`}>
               🧠 LLM: {(() => {
                 if (llmConfig.ollamaStatus === 'checking') return 'Checking Ollama...';
-                if (llmConfig.ollamaStatus === 'connected' && llmConfig.enabled) return 'Real AI Active';
-                return 'Simulated Only';
+                if (llmConfig.ollamaStatus === 'connected' && llmConfig.enabled) {
+                  return `Real AI Active (${llmConfig.currentModel || 'Unknown model'})`;
+                }
+                return 'Simulated Only - Install Ollama + llama3.2 for real AI';
               })()}
             </div>
           </div>
@@ -3198,6 +3567,123 @@ const EcosystemSimulator = () => {
             <h3 className="text-lg font-bold text-yellow-300 mb-2">
               🧠 Agent {selectedAgent.id}
             </h3>
+            
+            {/* Basic Info */}
+            <div className="mb-3 p-2 bg-gray-800 rounded">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-gray-400">Personality:</span>
+                  <div className="font-mono text-yellow-200">{selectedAgent.personality}</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Energy:</span>
+                  <div className="font-mono text-green-300">{selectedAgent.energy}%</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Age:</span>
+                  <div className="font-mono text-blue-300">{selectedAgent.age}</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Status:</span>
+                  <div className={`font-mono ${
+                    selectedAgent.status === 'Infected' ? 'text-red-400' :
+                    selectedAgent.status === 'Recovered' ? 'text-green-400' :
+                    'text-blue-400'
+                  }`}>{selectedAgent.status}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* LLM Reasoning Info */}
+            <div className="mb-3 p-2 bg-gray-800 rounded border border-purple-400">
+              <h4 className="text-sm font-semibold text-purple-300 mb-1">
+                {selectedAgent.isRealLLM ? '🤖 Real LLM Reasoning' : '🎭 Simulated Reasoning'}
+              </h4>
+              
+              {selectedAgent.isRealLLM && selectedAgent.llmData && (
+                <div className="mb-2 text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Model:</span>
+                    <span className="font-mono text-cyan-300">{selectedAgent.llmData.model}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Response Time:</span>
+                    <span className="font-mono text-yellow-300">{selectedAgent.llmData.responseTime}ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Parsed JSON:</span>
+                    <span className={`font-mono ${
+                      selectedAgent.llmData.parsed ? 'text-green-300' : 'text-orange-300'
+                    }`}>
+                      {selectedAgent.llmData.parsed ? 'Yes' : 'Natural Language'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-gray-400 text-sm">Confidence:</span>
+                <span className="font-mono text-yellow-300">
+                  {Math.round(selectedAgent.confidence * 100)}%
+                </span>
+              </div>
+              
+              <div className="text-sm">
+                <span className="text-gray-400">Decision:</span>
+                <div className="mt-1 p-2 bg-black rounded text-gray-200 text-xs max-h-20 overflow-y-auto">
+                  {selectedAgent.reasoning}
+                </div>
+              </div>
+            </div>
+
+            {/* Social Info */}
+            <div className="mb-3 p-2 bg-gray-800 rounded">
+              <h4 className="text-sm font-semibold text-cyan-300 mb-1">🤝 Social Network</h4>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-400">Known Agents:</span>
+                  <div className="font-mono text-cyan-200">{selectedAgent.knownAgents}</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Avg Trust:</span>
+                  <div className="font-mono text-green-200">
+                    {Math.round(selectedAgent.avgTrust * 100)}%
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Resources:</span>
+                  <div className="font-mono text-yellow-200">{selectedAgent.knownResources}</div>
+                </div>
+                <div>
+                  <span className="text-gray-400">Dangers:</span>
+                  <div className="font-mono text-red-200">{selectedAgent.dangerZones}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent History */}
+            {selectedAgent.history && selectedAgent.history.length > 0 && (
+              <div className="mb-3 p-2 bg-gray-800 rounded">
+                <h4 className="text-sm font-semibold text-orange-300 mb-1">📜 Recent Decisions</h4>
+                <div className="space-y-1 max-h-16 overflow-y-auto">
+                  {selectedAgent.history.slice(-3).reverse().map((decision, idx) => (
+                    <div key={idx} className="text-xs p-1 bg-black rounded">
+                      <div className="flex justify-between">
+                        <span className={`font-mono ${
+                          decision.success ? 'text-green-300' : 'text-red-300'
+                        }`}>
+                          {decision.method === 'real_llm' ? '🤖' : '🎭'}
+                        </span>
+                        <span className="text-gray-400">
+                          {new Date(decision.timestamp).toLocaleTimeString().slice(0, 5)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <button 
               onClick={() => setSelectedAgent(null)}
               className="mt-3 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs w-full"
@@ -3221,6 +3707,102 @@ const EcosystemSimulator = () => {
             <div className="flex justify-between">
               <span className="text-blue-400">🔵 RL Agents:</span>
               <span className="font-mono">{stats.rlAgents}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* LLM Performance Dashboard */}
+        <div className="mb-6 p-3 bg-gray-700 rounded border-l-4 border-purple-400">
+          <h4 className="text-md font-semibold mb-2 text-purple-300">🤖 LLM Performance</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className={`${
+                llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
+                  ? 'text-green-400' 
+                  : 'text-red-400'
+              }`}>
+                Status:
+              </span>
+              <span className="font-mono text-xs">
+                {llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
+                  ? 'Real AI' 
+                  : 'Simulated'}
+              </span>
+            </div>
+            {llmConfig.enabled && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-cyan-400">Requests:</span>
+                  <span className="font-mono">{stats.llmStats.totalRequests}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-green-400">Success Rate:</span>
+                  <span className="font-mono">{Math.round(stats.llmStats.successRate * 100)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-yellow-400">Avg Response:</span>
+                  <span className="font-mono">{Math.round(stats.llmStats.avgResponseTime)}ms</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-orange-400">Fallbacks:</span>
+                  <span className="font-mono">{stats.llmStats.fallbackUsed}</span>
+                </div>
+              </>
+            )}
+            <div className="mt-2 pt-2 border-t border-gray-600">
+              <button
+                onClick={() => {
+                  // Update LLM service configuration
+                  const newEndpoint = prompt('Enter Ollama endpoint:', llmConfig.endpoint);
+                  if (newEndpoint && newEndpoint.trim()) {
+                    llmService.updateConfig({ endpoint: newEndpoint.trim() });
+                    setLLMConfig(prev => ({ ...prev, endpoint: newEndpoint.trim() }));
+                    showNotification('🔧 LLM endpoint updated', 'info');
+                  }
+                }}
+                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs mr-2"
+                title="Configure LLM endpoint"
+              >
+                🔧 Config
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    showNotification('🤖 Testing LLM...', 'info');
+                    const testPrompt = llmService.buildEcosystemPrompt(
+                      { personality: 'curious', id: 'test', age: 50, energy: 75, status: 'Susceptible' },
+                      { nearbyAgents: [], nearbyInfected: 0, nearestResourceDistance: 15, nearbyCount: 2 },
+                      []
+                    );
+                    
+                    const result = await llmService.callLLM(testPrompt, { maxTokens: 128 });
+                    const parsed = llmService.parseLLMResponse(result.response);
+                    
+                    showNotification(`✅ LLM Test: ${parsed.action} (${result.responseTime}ms)`, 'success');
+                    console.log('🧪 LLM Test Result:', { result, parsed });
+                  } catch (error) {
+                    showNotification(`❌ LLM Test Failed: ${error.message}`, 'error');
+                    console.error('🧪 LLM Test Error:', error);
+                  }
+                }}
+                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs mr-2"
+                title="Test LLM connection with sample reasoning"
+                disabled={!llmConfig.enabled}
+              >
+                🧪 Test
+              </button>
+              <button
+                onClick={() => {
+                  if (llmService) {
+                    llmService.resetStats();
+                    showNotification('📊 LLM stats reset', 'info');
+                  }
+                }}
+                className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs"
+                title="Reset LLM performance statistics"
+              >
+                🔄 Reset
+              </button>
             </div>
           </div>
         </div>
