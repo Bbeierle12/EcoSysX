@@ -5728,7 +5728,7 @@ const EcosystemSimulator = () => {
   const [step, setStep] = useState(0);
   const [playerStats, setPlayerStats] = useState(null);
   const [gameOver, setGameOver] = useState(false);
-  const [cameraMode, setCameraMode] = useState('follow'); // Changed to follow mode for player
+  const [cameraMode, setCameraMode] = useState('overview'); // Default to overview mode for observer
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [analytics, setAnalytics] = useState({});
   const [notifications, setNotifications] = useState([]);
@@ -6268,23 +6268,8 @@ const EcosystemSimulator = () => {
             influenceAnalysis: clickedAgent.getInfluenceAnalysis ? clickedAgent.getInfluenceAnalysis() : null
           });
         }
-      } else {
-        // No agent clicked - move player to clicked ground position
-        if (playerAgentRef.current && isRunning) {
-          // Cast ray to the ground plane (y = 1)
-          const planeIntersect = raycasterRef.current.intersectObject(new THREE.Mesh(
-            new THREE.PlaneGeometry(1000, 1000), 
-            new THREE.MeshBasicMaterial({visible: false})
-          ).rotateX(-Math.PI / 2).translateY(1));
-          
-          if (planeIntersect.length > 0) {
-            const targetPos = planeIntersect[0].point;
-            // Set player target position for smart movement
-            playerAgentRef.current.moveToPosition(targetPos, environment, agents);
-            showNotification(`🎯 Moving to (${targetPos.x.toFixed(1)}, ${targetPos.z.toFixed(1)})`, 'info');
-          }
-        }
       }
+      // Observer mode - no agent movement on clicks
     };
 
     renderer.domElement.addEventListener('click', handleClick);
@@ -6301,11 +6286,13 @@ const EcosystemSimulator = () => {
         });
       }
       
-      // Follow camera mode - follow the player agent
-      if (cameraMode === 'follow' && !gameOver && playerAgentRef.current) {
-        const agentPos = playerAgentRef.current.position;
-        camera.position.set(agentPos.x + 10, 15, agentPos.z + 10);
-        camera.lookAt(agentPos.x, agentPos.y, agentPos.z);
+      // Follow camera mode - follow the selected agent
+      if (cameraMode === 'follow' && !gameOver && selectedAgent && !selectedAgent.isEnvironmentalScan) {
+        const agentPos = selectedAgent.position;
+        if (agentPos) {
+          camera.position.set(agentPos.x + 10, 15, agentPos.z + 10);
+          camera.lookAt(agentPos.x, agentPos.y, agentPos.z);
+        }
       }
       
       renderer.render(scene, camera);
@@ -6784,21 +6771,14 @@ const EcosystemSimulator = () => {
     // Create new agents - include one player agent
     const newAgents = [];
     
-    // Create player agent first
-    const playerAgent = new PlayerAgent(`player_${Date.now()}`, { 
-      x: 0, 
-      y: 1, 
-      z: 0 
-    }, null, 0); // Pass currentStep = 0 for reset agents
-    playerAgent.isPlayer = true;
-    playerAgentRef.current = playerAgent;
-    newAgents.push(playerAgent);
+    // Observer mode - no player agent created
+    playerAgentRef.current = null;
     
-    for (let i = 1; i < 25; i++) { // Start from 1 since we already added player
+    for (let i = 0; i < 25; i++) { // Create 25 agents (no player)
       let agent;
       
       if (i < 8) {
-        // Causal agents (7 agents + player)
+        // Causal agents (8 agents)
         agent = new CausalAgent(`causal_reset_${i}_${Date.now()}`, { 
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
@@ -6958,7 +6938,7 @@ const EcosystemSimulator = () => {
               onClick={() => setCameraMode(cameraMode === 'overview' ? 'follow' : 'overview')}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded ml-2"
             >
-              📷 {cameraMode === 'overview' ? 'Follow Player' : 'Overview'}
+              📷 {cameraMode === 'overview' ? 'Follow Selected' : 'Overview'}
             </button>
             <button
               onClick={takeScreenshot}
@@ -6969,98 +6949,75 @@ const EcosystemSimulator = () => {
             </button>
           </div>
           
-          {/* Player-specific controls */}
-          {playerAgentRef.current && (
-            <div className="mt-3 p-2 bg-gray-800 rounded border border-white">
-              <h3 className="text-sm font-bold text-white mb-2">🎯 Player Controls</h3>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  onClick={() => {
-                    if (playerAgentRef.current.activateReproduction(step)) {
-                      showNotification('💕 Reproduction mode activated - Move near a healthy agent', 'info');
-                    } else {
-                      showNotification('❌ Cannot reproduce - Need energy >60, age >25, no infection', 'warning');
-                    }
-                  }}
-                  className={`px-2 py-1 rounded text-xs ${
-                    playerAgentRef.current?.abilities?.reproductionReady 
-                      ? 'bg-pink-600 hover:bg-pink-700' 
-                      : 'bg-gray-600'
-                  }`}
-                  disabled={!playerAgentRef.current?.abilities?.reproductionReady}
-                >
-                  💕 Reproduce
-                </button>
-                
-                <button
-                  onClick={() => {
-                    const scan = playerAgentRef.current.scanEnvironment(environment, agents);
-                    console.log('🔍 Environmental Scan:', scan);
-                    setSelectedAgent({
-                      id: 'environmental_scan',
-                      scanData: scan,
-                      isEnvironmentalScan: true
-                    });
-                    showNotification('🔍 Environment scanned - Check console or agent panel', 'info');
-                  }}
-                  className="px-2 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-xs"
-                >
-                  🔍 Scan
-                </button>
-                
-                <button
-                  onClick={() => {
-                    // Find nearby agent needing help
-                    const needyAgents = agents.filter(a => 
-                      a !== playerAgentRef.current && 
-                      a.energy < 40 && 
-                      playerAgentRef.current.distanceTo(a) < playerAgentRef.current.helpRadius
-                    );
-                    
-                    if (needyAgents.length > 0 && playerAgentRef.current.energy > 35) {
-                      const target = needyAgents[0];
-                      if (playerAgentRef.current.shareResourcesWith(target)) {
-                        showNotification(`💝 Helped ${target.id.substring(0, 8)} (+15 energy)`, 'success');
-                      }
-                    } else {
-                      showNotification('❌ No nearby agents need help or insufficient energy', 'warning');
-                    }
-                  }}
-                  className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
-                >
-                  💝 Help
-                </button>
-                
-                <button
-                  onClick={() => {
-                    const stats = playerAgentRef.current.getPerformanceSummary(step);
-                    console.log('📊 Player Performance:', stats);
-                    showNotification(`📊 Performance - Survival: ${stats.survivalRating}/100`, 'info');
-                  }}
-                  className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs"
-                >
-                  📊 Stats
-                </button>
-              </div>
+          {/* Observer Controls */}
+          <div className="mt-3 p-2 bg-gray-800 rounded border border-white">
+            <h3 className="text-sm font-bold text-white mb-2">👁️ Observer Controls</h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                onClick={() => {
+                  // Find highest energy agent
+                  const highestEnergyAgent = agents.reduce((max, agent) => 
+                    agent.energy > max.energy ? agent : max, agents[0]);
+                  if (highestEnergyAgent) {
+                    setSelectedAgent(highestEnergyAgent);
+                    showNotification(`⚡ Following highest energy agent: ${highestEnergyAgent.id.substring(0, 8)}`, 'info');
+                  }
+                }}
+                className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs"
+              >
+                ⚡ Highest Energy
+              </button>
               
-              {playerAgentRef.current.manualReproductionActive && (
-                <div className="mt-2 p-1 bg-pink-900 rounded text-xs">
-                  <span className="text-pink-300">💕 Reproduction Active</span>
-                  <br />
-                  <span className="text-gray-300">Move near a healthy agent to reproduce</span>
-                  <button
-                    onClick={() => {
-                      playerAgentRef.current.manualReproductionActive = false;
-                      showNotification('💔 Reproduction mode deactivated', 'info');
-                    }}
-                    className="ml-2 px-1 py-0.5 bg-red-700 hover:bg-red-800 rounded"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={() => {
+                  // Find oldest agent
+                  const oldestAgent = agents.reduce((oldest, agent) => 
+                    agent.getAge(step) > oldest.getAge(step) ? agent : oldest, agents[0]);
+                  if (oldestAgent) {
+                    setSelectedAgent(oldestAgent);
+                    showNotification(`� Following oldest agent: ${oldestAgent.id.substring(0, 8)} (Age: ${oldestAgent.getAge(step)})`, 'info');
+                  }
+                }}
+                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs"
+              >
+                � Oldest Agent
+              </button>
+              
+              <button
+                onClick={() => {
+                  // Find random agent
+                  const randomAgent = agents[Math.floor(Math.random() * agents.length)];
+                  if (randomAgent) {
+                    setSelectedAgent(randomAgent);
+                    showNotification(`🎲 Following random agent: ${randomAgent.id.substring(0, 8)}`, 'info');
+                  }
+                }}
+                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
+              >
+                🎲 Random Agent
+              </button>
+              
+              <button
+                onClick={() => {
+                  // Show ecosystem overview
+                  const totalEnergy = agents.reduce((sum, a) => sum + a.energy, 0);
+                  const avgAge = agents.reduce((sum, a) => sum + a.getAge(step), 0) / agents.length;
+                  const infected = agents.filter(a => a.status === 'Infected').length;
+                  console.log('🌍 Ecosystem Overview:', {
+                    totalAgents: agents.length,
+                    totalEnergy: totalEnergy.toFixed(1),
+                    averageAge: avgAge.toFixed(1),
+                    infected,
+                    healthyPercent: ((agents.length - infected) / agents.length * 100).toFixed(1) + '%'
+                  });
+                  showNotification(`🌍 Ecosystem: ${agents.length} agents, ${infected} infected`, 'info');
+                }}
+                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
+              >
+                🌍 Overview
+              </button>
             </div>
-          )}
+          </div>
           
           {/* Analysis Controls */}
           <div className="mt-2 space-y-2">
