@@ -3,6 +3,35 @@ import * as THREE from 'three';
 import * as d3 from 'd3';
 import { llmService } from './LLMService.js';
 
+// Global time configuration for TIME_V1 clock semantics
+const TIME_V1 = Object.freeze({
+  dtHours: 1, // 1 hour per simulation step
+  get dtDays() {
+    return this.dtHours / 24;
+  },
+  stepToHours(step) {
+    return step * this.dtHours;
+  },
+  stepToDays(step) {
+    return this.stepToHours(step) / 24;
+  },
+  hoursToSteps(hours) {
+    return hours / this.dtHours;
+  },
+  daysToSteps(days) {
+    return this.hoursToSteps(days * 24);
+  }
+});
+
+// Hazard probability function for continuous-time processes
+const hazardProbability = (ratePerDay, dtHours = TIME_V1.dtHours) => {
+  const dtDays = dtHours / 24;
+  if (!Number.isFinite(ratePerDay) || ratePerDay <= 0 || dtDays <= 0) {
+    return 0;
+  }
+  return 1 - Math.exp(-ratePerDay * dtDays);
+};
+
 // Message Types - Define globally
 const MessageTypes = {
   RESOURCE_LOCATION: 'resource',
@@ -660,6 +689,7 @@ class EcosystemAnalytics {
 
   recordContacts(agents) {
     const contactDistance = 8;
+    const contactHours = TIME_V1.dtHours; // Hours of contact per step when in range
     
     agents.forEach(agentA => {
       const typeA = this.getAgentType(agentA);
@@ -669,13 +699,70 @@ class EcosystemAnalytics {
           const typeB = this.getAgentType(agentB);
           const key = `${typeA}_${typeB}`;
           
+          // Count contacts by type (legacy)
           this.windowData.contacts_by_type.set(key, 
             (this.windowData.contacts_by_type.get(key) || 0) + 1);
           
-          // Record infection events
+          // Contact-hours matrix tracking for epidemiology
+          const pairKey = `${agentA.id}:${agentB.id}`;
+          const reversePairKey = `${agentB.id}:${agentA.id}`;
+          
+          // Use consistent ordering to avoid double counting
+          const contactKey = agentA.id < agentB.id ? pairKey : reversePairKey;
+          
+          const existingContactHours = this.contactMatrix.get(contactKey) || {
+            totalHours: 0,
+            lastContact: this.currentStep,
+            agentA_id: agentA.id < agentB.id ? agentA.id : agentB.id,
+            agentB_id: agentA.id < agentB.id ? agentB.id : agentA.id,
+            agentA_type: agentA.id < agentB.id ? typeA : typeB,
+            agentB_type: agentA.id < agentB.id ? typeB : typeA,
+            infections_transmitted: 0
+          };
+          
+          existingContactHours.totalHours += contactHours;
+          existingContactHours.lastContact = this.currentStep;
+          this.contactMatrix.set(contactKey, existingContactHours);
+          
+          // Enhanced infection tracking with contact-hours
           if (agentA.status === 'Infected' && agentB.status === 'Susceptible') {
-            this.windowData.infections_caused.set(agentA.id, 
-              (this.windowData.infections_caused.get(agentA.id) || 0) + 1);
+            // Calculate transmission probability based on contact hours
+            const transmissionRate = 0.1; // Base transmission rate per hour of contact
+            const transmissionProb = hazardProbability(transmissionRate, contactHours);
+            
+            if (Math.random() < transmissionProb) {
+              this.windowData.infections_caused.set(agentA.id, 
+                (this.windowData.infections_caused.get(agentA.id) || 0) + 1);
+              
+              // Record transmission in contact matrix
+              existingContactHours.infections_transmitted += 1;
+              this.contactMatrix.set(contactKey, existingContactHours);
+              
+              // Actually infect the agent (if not already done by agent update)
+              if (agentB.status === 'Susceptible') {
+                agentB.status = 'Infected';
+                agentB.infectionTimer = 0;
+              }
+            }
+          }
+          
+          // Reverse case
+          if (agentB.status === 'Infected' && agentA.status === 'Susceptible') {
+            const transmissionRate = 0.1;
+            const transmissionProb = hazardProbability(transmissionRate, contactHours);
+            
+            if (Math.random() < transmissionProb) {
+              this.windowData.infections_caused.set(agentB.id, 
+                (this.windowData.infections_caused.get(agentB.id) || 0) + 1);
+              
+              existingContactHours.infections_transmitted += 1;
+              this.contactMatrix.set(contactKey, existingContactHours);
+              
+              if (agentA.status === 'Susceptible') {
+                agentA.status = 'Infected';
+                agentA.infectionTimer = 0;
+              }
+            }
           }
         }
       });
@@ -683,7 +770,7 @@ class EcosystemAnalytics {
       // Record infectious time
       if (agentA.status === 'Infected') {
         this.windowData.infectious_time.set(typeA, 
-          (this.windowData.infectious_time.get(typeA) || 0) + 1);
+          (this.windowData.infectious_time.get(typeA) || 0) + TIME_V1.dtHours);
       }
     });
   }
@@ -874,7 +961,7 @@ class EcosystemAnalytics {
     return {
       id: agent.id,
       type: this.getAgentType(agent),
-      age: agent.age,
+      age: agent.getAge ? agent.getAge(this.currentStep) : 0, // Use proper age calculation
       energy: Math.round(agent.energy),
       status: agent.status,
       trust_avg: agent.calculateAverageTrust ? Math.round(agent.calculateAverageTrust() * 100) / 100 : 0.5,
@@ -913,6 +1000,298 @@ class EcosystemAnalytics {
       `${checkpoint.performance.memory_mb}MB memory`);
   }
 
+  generateEpidemiologyStats() {
+    if (!this.contactMatrix || this.contactMatrix.size === 0) {
+      return {
+        total_contact_pairs: 0,
+        total_contact_hours: 0,
+        average_contact_hours_per_pair: 0,
+        transmissions_recorded: 0,
+        transmission_rate_per_contact_hour: 0,
+        contact_duration_distribution: {},
+        transmission_by_contact_duration: {}
+      };
+    }
+
+    const contacts = Array.from(this.contactMatrix.values());
+    const totalContactHours = contacts.reduce((sum, contact) => sum + contact.totalHours, 0);
+    const totalTransmissions = contacts.reduce((sum, contact) => sum + contact.infections_transmitted, 0);
+    
+    // Contact duration distribution (binned)
+    const durationBins = { '0-1h': 0, '1-5h': 0, '5-10h': 0, '10-24h': 0, '24h+': 0 };
+    const transmissionByDuration = { '0-1h': 0, '1-5h': 0, '5-10h': 0, '10-24h': 0, '24h+': 0 };
+    
+    contacts.forEach(contact => {
+      const hours = contact.totalHours;
+      const transmissions = contact.infections_transmitted;
+      
+      if (hours <= 1) {
+        durationBins['0-1h']++;
+        transmissionByDuration['0-1h'] += transmissions;
+      } else if (hours <= 5) {
+        durationBins['1-5h']++;
+        transmissionByDuration['1-5h'] += transmissions;
+      } else if (hours <= 10) {
+        durationBins['5-10h']++;
+        transmissionByDuration['5-10h'] += transmissions;
+      } else if (hours <= 24) {
+        durationBins['10-24h']++;
+        transmissionByDuration['10-24h'] += transmissions;
+      } else {
+        durationBins['24h+']++;
+        transmissionByDuration['24h+'] += transmissions;
+      }
+    });
+
+    return {
+      total_contact_pairs: this.contactMatrix.size,
+      total_contact_hours: Math.round(totalContactHours * 100) / 100,
+      average_contact_hours_per_pair: Math.round((totalContactHours / this.contactMatrix.size) * 100) / 100,
+      transmissions_recorded: totalTransmissions,
+      transmission_rate_per_contact_hour: totalContactHours > 0 ? Math.round((totalTransmissions / totalContactHours) * 10000) / 10000 : 0,
+      contact_duration_distribution: durationBins,
+      transmission_by_contact_duration: transmissionByDuration,
+      time_system: {
+        hours_per_step: TIME_V1.dtHours,
+        total_simulation_hours: TIME_V1.stepToHours(this.currentStep),
+        total_simulation_days: TIME_V1.stepToDays(this.currentStep)
+      }
+    };
+  }
+
+  // Compact Schema v1 Export - Structured format with TIME_V1 semantics and compressed logging
+  async exportSchemaV1(agents, environment) {
+    try {
+      console.log('📋 [Export] Starting Schema v1 export...');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      const schemaV1_data = {
+        schema_version: "1.0.0",
+        time_system: {
+          version: "TIME_V1",
+          dt_hours: TIME_V1.dtHours,
+          dt_days: TIME_V1.dtDays,
+          current_step: this.currentStep,
+          current_hour: TIME_V1.stepToHours(this.currentStep),
+          current_day: TIME_V1.stepToDays(this.currentStep),
+          export_timestamp: new Date().toISOString()
+        },
+        
+        // Population snapshot - end-of-step coherent state
+        population: {
+          total: agents.length,
+          by_status: this.compressStatusDistribution(agents),
+          by_type: this.compressTypeDistribution(agents),
+          age_statistics: this.compressAgeStatistics(agents),
+          energy_statistics: this.compressEnergyStatistics(agents)
+        },
+        
+        // Vital events - births and deaths with full TIME_V1 context
+        vital_events: this.compressVitalEvents(),
+        
+        // Epidemiological data - contact-hours and transmission analysis
+        epidemiology: {
+          contact_matrix_summary: this.compressContactMatrix(),
+          transmission_summary: this.compressTransmissionData(),
+          infection_timeline: this.compressInfectionTimeline()
+        },
+        
+        // Environment state
+        environment: {
+          resource_count: environment.resources.size,
+          weather: environment.getWeatherEffects(),
+          environmental_stress: environment.environmentalStress
+        },
+        
+        // Mass balance verification
+        mass_balance: this.generateMassBalanceReport(),
+        
+        // Compressed event log - only critical events
+        compressed_events: this.compressEventLog(),
+        
+        // Simulation metadata
+        simulation_metadata: {
+          session_id: `schemaV1_${timestamp}`,
+          window_count: this.windowHistory.length,
+          checkpoint_count: this.checkpoints.length,
+          compression_ratio: this.calculateCompressionRatio()
+        }
+      };
+
+      const filename = `EcoSysX-SchemaV1-Step${this.currentStep}-${timestamp}.json`;
+      const blob = new Blob([JSON.stringify(schemaV1_data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log(`✅ [Export] Schema v1 exported: ${filename} (${Math.round(blob.size / 1024)}KB)`);
+      return { success: true, filename, size_kb: Math.round(blob.size / 1024) };
+      
+    } catch (error) {
+      console.error('❌ [Export] Schema v1 export failed:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Helper methods for Schema v1 compression
+  compressStatusDistribution(agents) {
+    const dist = { Susceptible: 0, Infected: 0, Recovered: 0 };
+    agents.forEach(agent => dist[agent.status]++);
+    return dist;
+  }
+
+  compressTypeDistribution(agents) {
+    const dist = { Causal: 0, RL: 0, Basic: 0, Player: 0 };
+    agents.forEach(agent => {
+      if (agent.isPlayer) dist.Player++;
+      else if (agent.constructor.name === 'CausalAgent') dist.Causal++;
+      else if (agent.id.includes('basic')) dist.Basic++;
+      else dist.RL++;
+    });
+    return dist;
+  }
+
+  compressAgeStatistics(agents) {
+    const ages = agents.map(a => a.getAge ? a.getAge(this.currentStep) : 0);
+    return {
+      mean: Math.round((ages.reduce((s, a) => s + a, 0) / ages.length) * 100) / 100,
+      median: this.calculateMedian(ages),
+      min: Math.min(...ages),
+      max: Math.max(...ages),
+      std_dev: Math.round(this.calculateStdDev(ages) * 100) / 100
+    };
+  }
+
+  compressEnergyStatistics(agents) {
+    const energies = agents.map(a => a.energy);
+    return {
+      mean: Math.round((energies.reduce((s, e) => s + e, 0) / energies.length) * 100) / 100,
+      median: this.calculateMedian(energies),
+      min: Math.min(...energies),
+      max: Math.max(...energies),
+      critical_count: energies.filter(e => e <= 10).length
+    };
+  }
+
+  compressVitalEvents() {
+    // Extract birth/death events from recent window data
+    const recentEvents = this.windowData.events || [];
+    const births = recentEvents.filter(e => e.type === 'birth');
+    const deaths = recentEvents.filter(e => e.type === 'death');
+    
+    return {
+      births_this_window: births.length,
+      deaths_this_window: deaths.length,
+      net_population_change: births.length - deaths.length,
+      death_causes: this.aggregateDeathCauses(deaths),
+      birth_energy_cost_total: births.length * 25, // Average reproduction cost
+      mass_balance_verified: births.length - deaths.length === (this.windowData.mass_balance?.net_change || 0)
+    };
+  }
+
+  compressContactMatrix() {
+    if (!this.contactMatrix || this.contactMatrix.size === 0) return null;
+    
+    const contacts = Array.from(this.contactMatrix.values());
+    const totalHours = contacts.reduce((s, c) => s + c.totalHours, 0);
+    const totalTransmissions = contacts.reduce((s, c) => s + c.infections_transmitted, 0);
+    
+    return {
+      total_pairs: contacts.length,
+      total_contact_hours: Math.round(totalHours * 100) / 100,
+      avg_hours_per_pair: Math.round((totalHours / contacts.length) * 100) / 100,
+      total_transmissions: totalTransmissions,
+      transmission_efficiency: totalHours > 0 ? Math.round((totalTransmissions / totalHours) * 10000) / 10000 : 0
+    };
+  }
+
+  compressTransmissionData() {
+    const infectionsCaused = this.windowData.infections_caused || new Map();
+    const superspreaders = Array.from(infectionsCaused.entries())
+      .filter(([id, count]) => count >= 3)
+      .length;
+    
+    return {
+      total_infections_caused: Array.from(infectionsCaused.values()).reduce((s, c) => s + c, 0),
+      active_spreaders: infectionsCaused.size,
+      superspreaders_count: superspreaders,
+      avg_infections_per_spreader: infectionsCaused.size > 0 ? 
+        Math.round((Array.from(infectionsCaused.values()).reduce((s, c) => s + c, 0) / infectionsCaused.size) * 100) / 100 : 0
+    };
+  }
+
+  compressInfectionTimeline() {
+    const infectiousTime = this.windowData.infectious_time || new Map();
+    const totalInfectiousHours = Array.from(infectiousTime.values()).reduce((s, h) => s + h, 0);
+    
+    return {
+      total_infectious_hours: totalInfectiousHours,
+      infectious_agent_types: Object.fromEntries(infectiousTime),
+      avg_infectious_duration: infectiousTime.size > 0 ? 
+        Math.round((totalInfectiousHours / infectiousTime.size) * 100) / 100 : 0
+    };
+  }
+
+  generateMassBalanceReport() {
+    return this.windowData.mass_balance || {
+      initial_population: 0,
+      births: 0,
+      deaths: 0,
+      final_population: 0,
+      net_change: 0,
+      balance_check: true
+    };
+  }
+
+  compressEventLog() {
+    // Only include critical events, compress repetitive data
+    const events = this.windowData.events || [];
+    const criticalEvents = events.filter(e => 
+      e.type === 'birth' || e.type === 'death' || 
+      (e.type === 'infection' && Math.random() < 0.1) // Sample 10% of infections
+    );
+    
+    return {
+      critical_events: criticalEvents.length,
+      total_events_discarded: events.length - criticalEvents.length,
+      compression_ratio: events.length > 0 ? Math.round((criticalEvents.length / events.length) * 100) : 100,
+      sample_events: criticalEvents.slice(-5) // Last 5 critical events
+    };
+  }
+
+  calculateCompressionRatio() {
+    const fullDataSize = JSON.stringify(this.windowHistory || []).length;
+    const compressedSize = JSON.stringify(this.compressEventLog()).length;
+    return fullDataSize > 0 ? Math.round((compressedSize / fullDataSize) * 100) : 0;
+  }
+
+  // Statistical helper methods
+  calculateMedian(numbers) {
+    const sorted = numbers.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }
+
+  calculateStdDev(numbers) {
+    const mean = numbers.reduce((s, n) => s + n, 0) / numbers.length;
+    const variance = numbers.reduce((s, n) => s + Math.pow(n - mean, 2), 0) / numbers.length;
+    return Math.sqrt(variance);
+  }
+
+  aggregateDeathCauses(deaths) {
+    const causes = { starvation: 0, infection: 0, old_age: 0, other: 0 };
+    deaths.forEach(death => {
+      const cause = death.data?.cause || 'other';
+      causes[cause] = (causes[cause] || 0) + 1;
+    });
+    return causes;
+  }
+
   async exportAnalytics() {
     try {
       console.log('📊 [Export] Starting analytics export...');
@@ -934,6 +1313,7 @@ class EcosystemAnalytics {
           panel_agents: this.panelSample ? this.panelSample.size : 0,
           contact_matrix_entries: this.contactMatrix ? this.contactMatrix.size : 0
         },
+        epidemiology_summary: this.generateEpidemiologyStats(),
         recent_windows: this.windowHistory || [],
         checkpoints: this.checkpoints || [],
         panel_sample: this.panelSample ? this.safeSerializeAgents(Array.from(this.panelSample.values())) : [],
@@ -1138,14 +1518,14 @@ class EcosystemAnalytics {
 
 // Base Agent Class
 class Agent {
-  constructor(id, position, genotype = null) {
+  constructor(id, position, genotype = null, currentStep = 0) {
     this.id = id;
     this.position = { ...position };
     this.velocity = { x: 0, y: 0, z: 0 }; // Start with zero velocity
     this.genotype = genotype || this.generateRandomGenotype();
     this.phenotype = this.expressPhenotype();
-    this.age = 0;
-    console.log(`Agent ${id} created with age: ${this.age}`); // DEBUG
+    this.birth_step = currentStep;
+    console.log(`Agent ${id} created at step ${currentStep} (birth_step: ${this.birth_step})`); // DEBUG
     this.energy = 100;
     this.status = 'Susceptible';
     this.infectionTimer = 0;
@@ -1154,6 +1534,16 @@ class Agent {
     this.learningPolicy = new ReinforcementLearningPolicy();
     this.reproductionCooldown = 0;
     this.isActive = false; // Flag to prevent movement when paused
+  }
+
+  // Derived age calculation based on birth_step and current simulation step
+  getAge(currentStep) {
+    return Math.max(0, currentStep - this.birth_step);
+  }
+
+  // Derived age in days for biological processes
+  getAgeDays(currentStep) {
+    return TIME_V1.stepToDays(this.getAge(currentStep));
   }
 
   generateRandomGenotype() {
@@ -1180,11 +1570,12 @@ class Agent {
     };
   }
 
-  update(environment, agents, isSimulationRunning = true) {
+  update(environment, agents, currentStep, isSimulationRunning = true) {
     // Don't update if simulation is paused
     if (!isSimulationRunning) return 'continue';
     
-    this.age++;
+    const age = this.getAge(currentStep);
+    const ageDays = this.getAgeDays(currentStep);
     
     // Get weather effects for this step
     const weatherEffects = environment.getWeatherEffects();
@@ -1193,7 +1584,7 @@ class Agent {
     // Weather and terrain adjusted energy consumption
     const baseLoss = 0.5; // Increased from 0.3
     const infectionPenalty = this.status === 'Infected' ? 0.6 : 0; // Increased from 0.4
-    const agePenalty = this.age > this.maxLifespan * 0.8 ? 0.3 : 0; // Increased from 0.2
+    const agePenalty = age > this.maxLifespan * 0.8 ? 0.3 : 0; // Increased from 0.2
     
     // Environmental stress effects
     const weatherEnergyPenalty = (weatherEffects.energyConsumptionMultiplier - 1.0) * 0.4;
@@ -1213,7 +1604,7 @@ class Agent {
     // Weather affects survival thresholds
     const baseCriticalEnergy = 5;
     const weatherCriticalEnergy = Math.max(2, baseCriticalEnergy - (weatherEffects.shelterNeed * 3));
-    const oldAge = this.age >= this.maxLifespan;
+    const oldAge = age >= this.maxLifespan;
     
     if (oldAge || this.energy <= weatherCriticalEnergy) {
       let deathChance = oldAge ? 0.1 : (weatherCriticalEnergy - this.energy) * 0.05;
@@ -1293,7 +1684,7 @@ class Agent {
     
     if (this.energy > reproductionThreshold && 
         this.reproductionCooldown === 0 && 
-        this.age > 20 && 
+        age > 20 && 
         Math.random() < baseRate) {
       return 'reproduce';
     }
@@ -1366,7 +1757,7 @@ class Agent {
       energy: this.energy,
       nearbyCount: nearbyAgents.length,
       nearbyInfected: nearbyAgents.filter(a => a.status === 'Infected').length,
-      age: this.age,
+      age: age,
       nearestResourceDistance: nearestResource ? nearestResource.distance : 100,
       status: this.status
     };
@@ -1572,7 +1963,7 @@ class Agent {
     }
   }
 
-  reproduce(partner = null) {
+  reproduce(partner = null, currentStep = 0) {
     const newGenotype = {};
     Object.keys(this.genotype).forEach(trait => {
       newGenotype[trait] = this.genotype[trait];
@@ -1594,10 +1985,11 @@ class Agent {
         y: 1, 
         z: this.position.z + (Math.random() - 0.5) * 3 
       },
-      newGenotype
+      newGenotype,
+      currentStep
     );
     
-    console.log(`Offspring ${offspring.id} born with age: ${offspring.age}`); // DEBUG
+    console.log(`Offspring ${offspring.id} born at step ${currentStep} (birth_step: ${offspring.birth_step})`); // DEBUG
     
     this.reproductionCooldown = 60;
     this.energy -= 15;
@@ -1608,8 +2000,8 @@ class Agent {
 
 // LLM-Powered Causal Agent
 class CausalAgent extends Agent {
-  constructor(id, position, genotype = null) {
-    super(id, position, genotype);
+  constructor(id, position, genotype = null, currentStep = 0) {
+    super(id, position, genotype, currentStep);
     this.reasoningHistory = [];
     this.lastReasoning = null;
     this.reasoningMode = false; // Start with simulated reasoning
@@ -4903,8 +5295,8 @@ class Environment {
 
 // Player-Controlled Agent with Enhanced Manual Controls
 class PlayerAgent extends Agent {
-  constructor(id, position, genotype = null) {
-    super(id, position, genotype);
+  constructor(id, position, genotype = null, currentStep = 0) {
+    super(id, position, genotype, currentStep);
     this.isPlayer = true;
     this.targetPosition = null;
     this.moveSpeed = 2.5; // Slightly faster than AI agents
@@ -4974,7 +5366,7 @@ class PlayerAgent extends Agent {
     return null;
   }
 
-  reproduceWithMate(mate) {
+  reproduceWithMate(mate, currentStep = 0) {
     // Hybrid genotype combining player and mate traits
     const newGenotype = {};
     Object.keys(this.genotype).forEach(trait => {
@@ -5008,7 +5400,8 @@ class PlayerAgent extends Agent {
         y: 1, 
         z: this.position.z + (Math.random() - 0.5) * 4 
       },
-      newGenotype
+      newGenotype,
+      currentStep
     );
     
     // Apply reproduction costs
@@ -5159,24 +5552,25 @@ class PlayerAgent extends Agent {
   }
 
   // Enhanced player update with special abilities
-  update(environment, agents, isSimulationRunning = true) {
+  update(environment, agents, currentStep, isSimulationRunning = true) {
     // Player can still move even when paused for better control
     if (!isSimulationRunning && !this.targetPosition) return 'continue';
     
-    this.age++;
+    const age = this.getAge(currentStep);
+    const ageDays = this.getAgeDays(currentStep);
     this.playerStats.survivalTime++;
     
     // More forgiving energy loss for player
     const baseLoss = 0.2; // Lower than NPC agents
     const infectionPenalty = this.status === 'Infected' ? 0.25 : 0;
-    const agePenalty = this.age > this.maxLifespan * 0.9 ? 0.15 : 0;
+    const agePenalty = age > this.maxLifespan * 0.9 ? 0.15 : 0;
     
     this.energy = Math.max(0, this.energy - (baseLoss + infectionPenalty + agePenalty));
     this.reproductionCooldown = Math.max(0, this.reproductionCooldown - 1);
 
     // More forgiving death conditions for player
     const criticalEnergy = 3;
-    const oldAge = this.age >= this.maxLifespan * 1.2; // 20% longer lifespan
+    const oldAge = age >= this.maxLifespan * 1.2; // 20% longer lifespan
     
     if (oldAge || this.energy <= criticalEnergy) {
       const deathChance = oldAge ? 0.02 : (criticalEnergy - this.energy) * 0.02; // Much lower death chance
@@ -5318,8 +5712,9 @@ class PlayerAgent extends Agent {
   }
 
   // Activate manual reproduction mode
-  activateReproduction() {
-    if (this.energy > 60 && this.age > 25 && this.reproductionCooldown === 0 && this.status !== 'Infected') {
+  activateReproduction(currentStep) {
+    const age = this.getAge(currentStep);
+    if (this.energy > 60 && age > 25 && this.reproductionCooldown === 0 && this.status !== 'Infected') {
       this.manualReproductionActive = true;
       return true;
     }
@@ -5327,24 +5722,26 @@ class PlayerAgent extends Agent {
   }
 
   // Get player performance summary
-  getPerformanceSummary() {
+  getPerformanceSummary(currentStep) {
     return {
       ...this.playerStats,
-      survivalRating: this.calculateSurvivalRating(),
-      efficiency: this.calculateEfficiency(),
+      survivalRating: this.calculateSurvivalRating(currentStep),
+      efficiency: this.calculateEfficiency(currentStep),
       socialImpact: this.calculateSocialImpact()
     };
   }
 
-  calculateSurvivalRating() {
-    const ageBonus = Math.min(100, this.age / 2);
+  calculateSurvivalRating(currentStep) {
+    const age = this.getAge(currentStep);
+    const ageBonus = Math.min(100, age / 2);
     const energyBonus = this.energy;
     const avoidanceBonus = Math.min(50, this.playerStats.infectionsAvoided * 10);
     return Math.round((ageBonus + energyBonus + avoidanceBonus) / 2);
   }
 
-  calculateEfficiency() {
-    const resourcesPerAge = this.age > 0 ? this.playerStats.resourcesCollected / this.age * 100 : 0;
+  calculateEfficiency(currentStep) {
+    const age = this.getAge(currentStep);
+    const resourcesPerAge = age > 0 ? this.playerStats.resourcesCollected / age * 100 : 0;
     return Math.round(resourcesPerAge);
   }
 
@@ -5834,7 +6231,7 @@ const EcosystemSimulator = () => {
             x: (Math.random() - 0.5) * 30, 
             y: 1, 
             z: (Math.random() - 0.5) * 30 
-          });
+          }, null, 0); // Pass currentStep = 0 for initial agents
           // Set initial LLM status (will be updated by connection check)
           agent.llmAvailable = llmConfig.enabled;
           agent.reasoningMode = true;
@@ -5844,14 +6241,14 @@ const EcosystemSimulator = () => {
             x: (Math.random() - 0.5) * 30, 
             y: 1, 
             z: (Math.random() - 0.5) * 30 
-          });
+          }, null, 0); // Pass currentStep = 0 for initial agents
         } else {
           // RL agents (9 agents) - enhanced Agent class
           agent = new Agent(`rl_${i}`, { 
             x: (Math.random() - 0.5) * 30, 
             y: 1, 
             z: (Math.random() - 0.5) * 30 
-          });
+          }, null, 0); // Pass currentStep = 0 for initial agents
         }
         
         // Seed multiple infected agents for observable epidemic dynamics
@@ -6102,6 +6499,7 @@ const EcosystemSimulator = () => {
 
     setAgents(currentAgents => {
       const newAgents = [...currentAgents];
+      const initialPopulation = newAgents.length; // Track initial population for mass balance
       const toRemove = [];
       const toAdd = [];
       
@@ -6110,7 +6508,7 @@ const EcosystemSimulator = () => {
       });
 
       newAgents.forEach((agent, index) => {
-        const result = agent.update(environment, newAgents, true);
+        const result = agent.update(environment, newAgents, step, true);
         
         switch (result) {
           case 'die':
@@ -6125,8 +6523,13 @@ const EcosystemSimulator = () => {
                 agent_id: agent.id,
                 agent_type: agentType,
                 cause: deathCause,
-                age: agent.age,
-                energy: agent.energy
+                birth_step: agent.birth_step,
+                age_at_death: agent.getAge(step),
+                age_days: agent.getAgeDays(step),
+                energy: agent.energy,
+                position: {...agent.position},
+                step_died: step,
+                lifespan_hours: TIME_V1.stepToHours(agent.getAge(step))
               });
             }
             break;
@@ -6166,13 +6569,13 @@ const EcosystemSimulator = () => {
                     y: 1, 
                     z: agent.position.z + (Math.random() - 0.5) * 3 
                   },
-                  agent.reproduce().genotype
+                  agent.reproduce(null, step).genotype
                 );
                 // Inherit LLM capabilities from parent
                 offspring.llmAvailable = agent.llmAvailable;
                 offspring.reasoningMode = agent.reasoningMode;
               } else {
-                offspring = agent.reproduce();
+                offspring = agent.reproduce(null, step);
               }
               
               createAgentMesh(offspring, sceneRef.current);
@@ -6189,8 +6592,15 @@ const EcosystemSimulator = () => {
                   parent_type: parentType,
                   offspring_id: offspring.id,
                   offspring_type: offspringType,
-                  parent_age: agent.age,
-                  parent_energy: agent.energy
+                  parent_birth_step: agent.birth_step,
+                  parent_age_at_birth: agent.getAge(step),
+                  parent_age_days: agent.getAgeDays(step),
+                  parent_energy: agent.energy,
+                  offspring_birth_step: offspring.birth_step,
+                  step_born: step,
+                  birth_position: {...offspring.position},
+                  reproduction_energy_cost: 25, // Energy cost for reproduction
+                  lifespan_parent_hours: TIME_V1.stepToHours(agent.getAge(step))
                 });
               }
             }
@@ -6208,12 +6618,25 @@ const EcosystemSimulator = () => {
 
       toAdd.forEach(agent => newAgents.push(agent));
 
+      // Mass balance validation
+      const finalPopulation = newAgents.length;
+      const births = toAdd.length;
+      const deaths = toRemove.length;
+      const expectedPopulation = initialPopulation + births - deaths;
+      
+      // Log mass balance (should always be true)
+      if (finalPopulation !== expectedPopulation) {
+        console.error(`❌ MASS BALANCE ERROR: Initial=${initialPopulation}, Births=${births}, Deaths=${deaths}, Expected=${expectedPopulation}, Actual=${finalPopulation}`);
+      } else if (deaths > 0 || births > 0) {
+        console.log(`✅ Mass Balance [Step ${step}]: Initial=${initialPopulation}, +${births} births, -${deaths} deaths, Final=${finalPopulation}`);
+      }
+
       // Update stats - no more player stats needed
       const susceptible = newAgents.filter(a => a.status === 'Susceptible').length;
       const infected = newAgents.filter(a => a.status === 'Infected').length;
       const recovered = newAgents.filter(a => a.status === 'Recovered').length;
-      const totalAge = newAgents.reduce((sum, a) => sum + a.age, 0);
-      console.log(`Step ${step}: Agent ages:`, newAgents.map(a => `${a.id}:${a.age}`).slice(0, 5)); // DEBUG first 5
+      const totalAge = newAgents.reduce((sum, a) => sum + a.getAge(step), 0); // Use proper age calculation
+      console.log(`Step ${step}: Agent ages:`, newAgents.map(a => `${a.id}:${a.getAge(step)}`).slice(0, 5)); // DEBUG first 5
       console.log(`Step ${step}: Total age: ${totalAge}, Avg age: ${Math.round(totalAge / newAgents.length)}, Count: ${newAgents.length}`); // DEBUG
       const totalEnergy = newAgents.reduce((sum, a) => sum + a.energy, 0);
       const causalAgents = newAgents.filter(a => a instanceof CausalAgent).length;
@@ -6250,7 +6673,16 @@ const EcosystemSimulator = () => {
           total: newAgents.length,
           avgAge: newAgents.length > 0 ? Math.round(totalAge / newAgents.length) : 0,
           avgEnergy: newAgents.length > 0 ? Math.round(totalEnergy / newAgents.length) : 0,
-          fps: performanceData.fps
+          fps: performanceData.fps,
+          // Mass balance tracking
+          mass_balance: {
+            initial_population: initialPopulation,
+            births: births,
+            deaths: deaths,
+            final_population: finalPopulation,
+            net_change: births - deaths,
+            balance_check: finalPopulation === expectedPopulation
+          }
         });
         // Periodic prune summary
         if (step > 0 && step % (debugSettings.pruneSummaryInterval || 1000) === 0) {
@@ -6397,7 +6829,7 @@ const EcosystemSimulator = () => {
       x: 0, 
       y: 1, 
       z: 0 
-    });
+    }, null, 0); // Pass currentStep = 0 for reset agents
     playerAgent.isPlayer = true;
     playerAgentRef.current = playerAgent;
     newAgents.push(playerAgent);
@@ -6411,7 +6843,7 @@ const EcosystemSimulator = () => {
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
           z: (Math.random() - 0.5) * 30 
-        });
+        }, null, 0); // Pass currentStep = 0 for reset agents
         // Inherit current LLM status
         agent.llmAvailable = llmConfig.enabled && llmConfig.ollamaStatus === 'connected';
         agent.reasoningMode = true;
@@ -6421,14 +6853,14 @@ const EcosystemSimulator = () => {
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
           z: (Math.random() - 0.5) * 30 
-        });
+        }, null, 0); // Pass currentStep = 0 for reset agents
       } else {
         // RL agents (9 agents)
         agent = new Agent(`rl_reset_${i}_${Date.now()}`, { 
           x: (Math.random() - 0.5) * 30, 
           y: 1, 
           z: (Math.random() - 0.5) * 30 
-        });
+        }, null, 0); // Pass currentStep = 0 for reset agents
       }
       
       // Seed multiple infected agents for observable epidemic dynamics
@@ -6741,7 +7173,14 @@ const EcosystemSimulator = () => {
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm mr-2"
               title="Export full simulation state (detailed snapshot)"
             >
-              � Export Snapshot
+              📊 Export Snapshot
+            </button>
+            <button
+              onClick={() => analyticsRef.current?.exportSchemaV1(agents, environment)}
+              className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm mr-2"
+              title="Export compact Schema v1 format with TIME_V1 semantics"
+            >
+              📋 Schema v1
             </button>
             <div className="text-xs text-cyan-300 mt-1">
               Performance: {performanceData.memory}MB RAM, {performanceData.fps} FPS
@@ -6924,6 +7363,7 @@ const EcosystemSimulator = () => {
             <p>• <strong>Export to EcoSysX Analytics:</strong> Comprehensive logs and CSV reports exported to your selected folder</p>
             <p>• <strong>Select Export Folder:</strong> Choose where to save your analytics files (requires supported browser)</p>
             <p>• <strong>Export Snapshot:</strong> Full current state</p>
+            <p>• <strong>Schema v1:</strong> Compact TIME_V1 format with compressed logging</p>
             <p>• <strong className="text-yellow-300">Gold agents:</strong> Advanced AI reasoning</p>
             <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
             <p>• <strong className="text-red-300">Red agents:</strong> Infected (spreading disease)</p>
