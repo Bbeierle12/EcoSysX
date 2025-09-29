@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import * as d3 from 'd3';
 import { llmService } from './LLMService.js';
+import HighPerformanceEcosystemIntegration from './HighPerformanceEcosystemIntegration.js';
+import PerformanceMonitoringDashboard from './PerformanceMonitoringDashboard.jsx';
+import ProgressiveScalingPanel from './ProgressiveScalingPanel.jsx';
 
 // Global time configuration for TIME_V1 clock semantics
 const TIME_V1 = Object.freeze({
@@ -5721,6 +5724,7 @@ const EcosystemSimulator = () => {
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const isInitializedRef = useRef(false);
+  const highPerformanceSystemRef = useRef(null);
   
   const [agents, setAgents] = useState([]);
   const [environment, setEnvironment] = useState(new Environment());
@@ -6094,6 +6098,88 @@ const EcosystemSimulator = () => {
     }
   };
 
+  // Progressive Scaling Functions
+  const addAgentsToSimulation = useCallback((count) => {
+    console.log(`📈 Adding ${count} agents to simulation`);
+    
+    const newAgents = [];
+    for (let i = 0; i < count; i++) {
+      let agent;
+      const agentType = Math.random();
+      
+      if (agentType < 0.3) {
+        // 30% Causal agents
+        agent = new CausalAgent(
+          `scaled_causal_${Date.now()}_${i}`, 
+          { 
+            x: (Math.random() - 0.5) * 40, 
+            y: 1, 
+            z: (Math.random() - 0.5) * 40 
+          }, 
+          null, 
+          step
+        );
+        agent.llmAvailable = llmConfig.enabled;
+        agent.reasoningMode = true;
+      } else if (agentType < 0.6) {
+        // 30% Basic agents
+        agent = new Agent(
+          `scaled_basic_${Date.now()}_${i}`, 
+          { 
+            x: (Math.random() - 0.5) * 40, 
+            y: 1, 
+            z: (Math.random() - 0.5) * 40 
+          }, 
+          null, 
+          step
+        );
+      } else {
+        // 40% RL agents
+        agent = new Agent(
+          `scaled_rl_${Date.now()}_${i}`, 
+          { 
+            x: (Math.random() - 0.5) * 40, 
+            y: 1, 
+            z: (Math.random() - 0.5) * 40 
+          }, 
+          null, 
+          step
+        );
+      }
+      
+      // Use high-performance rendering if available
+      if (highPerformanceSystemRef.current) {
+        highPerformanceSystemRef.current.addAgent(agent);
+      } else {
+        createAgentMesh(agent, sceneRef.current);
+      }
+      
+      newAgents.push(agent);
+    }
+    
+    setAgents(prev => [...prev, ...newAgents]);
+  }, [step, llmConfig.enabled]);
+
+  const removeAgentsFromSimulation = useCallback((count) => {
+    console.log(`📉 Removing ${count} agents from simulation`);
+    
+    setAgents(prev => {
+      const toRemove = prev.slice(-count); // Remove from end
+      const remaining = prev.slice(0, -count);
+      
+      // Remove from rendering system
+      toRemove.forEach(agent => {
+        if (highPerformanceSystemRef.current) {
+          highPerformanceSystemRef.current.removeAgent(agent.id);
+        } else if (agent.mesh && sceneRef.current) {
+          sceneRef.current.remove(agent.mesh);
+        }
+      });
+      
+      return remaining;
+    });
+  }, []);
+
   const createAgentMesh = (agent, scene) => {
     const geometry = new THREE.SphereGeometry(agent.phenotype.radius, 8, 6);
     
@@ -6167,6 +6253,20 @@ const EcosystemSimulator = () => {
     ground.name = 'ground';
     scene.add(ground);
 
+    // Initialize High-Performance System
+    console.log('🚀 Initializing High-Performance Ecosystem Integration...');
+    try {
+      highPerformanceSystemRef.current = new HighPerformanceEcosystemIntegration(
+        renderer, 
+        scene, 
+        50000 // Max agents - can be increased based on performance
+      );
+      console.log('✅ High-Performance System initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize high-performance system:', error);
+      console.log('⚠️ Falling back to standard rendering');
+    }
+
     // Create initial agents
     if (agents.length === 0) {
       const initialAgents = [];
@@ -6208,7 +6308,12 @@ const EcosystemSimulator = () => {
         // Agent age is now handled by birth_step (initialized in constructor)
         console.log(`Created initial agent ${agent.id} with birth_step ${agent.birth_step}`); // DEBUG
         
-        createAgentMesh(agent, scene);
+        // Use high-performance rendering if available, fallback to traditional mesh
+        if (highPerformanceSystemRef.current) {
+          highPerformanceSystemRef.current.addAgent(agent);
+        } else {
+          createAgentMesh(agent, scene);
+        }
         initialAgents.push(agent);
       }
       
@@ -6279,11 +6384,17 @@ const EcosystemSimulator = () => {
       requestAnimationFrame(animate);
       
       if (agents && agents.length > 0) {
-        agents.forEach(agent => {
-          if (agent.mesh && agent.position) {
-            agent.mesh.position.set(agent.position.x, agent.position.y, agent.position.z);
-          }
-        });
+        if (highPerformanceSystemRef.current) {
+          // Use high-performance instanced rendering
+          highPerformanceSystemRef.current.updateAgentPositions(agents);
+        } else {
+          // Fallback to individual mesh updates
+          agents.forEach(agent => {
+            if (agent.mesh && agent.position) {
+              agent.mesh.position.set(agent.position.x, agent.position.y, agent.position.z);
+            }
+          });
+        }
       }
       
       // Follow camera mode - follow the selected agent
@@ -6312,6 +6423,18 @@ const EcosystemSimulator = () => {
       if (mountRef.current && rendererRef.current) {
         window.removeEventListener('resize', handleResize);
         renderer.domElement.removeEventListener('click', handleClick);
+        
+        // Cleanup high-performance system
+        if (highPerformanceSystemRef.current) {
+          try {
+            highPerformanceSystemRef.current.dispose();
+            highPerformanceSystemRef.current = null;
+            console.log('🧹 High-Performance System disposed');
+          } catch (error) {
+            console.error('❌ Error disposing high-performance system:', error);
+          }
+        }
+        
         if (mountRef.current && renderer.domElement) {
           mountRef.current.removeChild(renderer.domElement);
         }
@@ -6436,6 +6559,16 @@ const EcosystemSimulator = () => {
       console.log('📍 Updating terrain occupancy...'); // DEBUG
       updatedEnvironment.updateTerrainOccupancy(agents);
 
+      // Use GPU compute system for agent updates if available
+      if (highPerformanceSystemRef.current && agents.length > 100) {
+        console.log('🚀 Using GPU compute system for agent updates');
+        try {
+          highPerformanceSystemRef.current.performSimulationStep(agents, updatedEnvironment, step);
+        } catch (error) {
+          console.warn('⚠️ GPU compute failed, falling back to CPU:', error);
+        }
+      }
+
     setAgents(currentAgents => {
       const newAgents = [...currentAgents];
       const initialPopulation = newAgents.length; // Track initial population for mass balance
@@ -6517,7 +6650,12 @@ const EcosystemSimulator = () => {
                 offspring = agent.reproduce(null, step);
               }
               
-              createAgentMesh(offspring, sceneRef.current);
+              // Use high-performance rendering if available, fallback to traditional mesh
+              if (highPerformanceSystemRef.current) {
+                highPerformanceSystemRef.current.addAgent(offspring);
+              } else {
+                createAgentMesh(offspring, sceneRef.current);
+              }
               toAdd.push(offspring);
               
               // Record birth event in analytics
@@ -6549,7 +6687,9 @@ const EcosystemSimulator = () => {
 
       toRemove.reverse().forEach(index => {
         const agent = newAgents[index];
-        if (agent.mesh) {
+        if (highPerformanceSystemRef.current) {
+          highPerformanceSystemRef.current.removeAgent(agent.id);
+        } else if (agent.mesh) {
           sceneRef.current.remove(agent.mesh);
         }
         newAgents.splice(index, 1);
@@ -7969,6 +8109,25 @@ const EcosystemSimulator = () => {
           </div>
         </div>
       )}
+
+      {/* Performance Monitoring Dashboard */}
+      <PerformanceMonitoringDashboard
+        highPerformanceSystem={highPerformanceSystemRef.current}
+        agents={agents}
+        isVisible={true}
+        position="top-right"
+      />
+
+      {/* Progressive Scaling Panel */}
+      <ProgressiveScalingPanel
+        agents={agents}
+        onAddAgents={addAgentsToSimulation}
+        onRemoveAgents={removeAgentsFromSimulation}
+        highPerformanceSystem={highPerformanceSystemRef.current}
+        isVisible={true}
+        position="bottom-left"
+        maxAgents={50000}
+      />
     </div>
   );
 };
