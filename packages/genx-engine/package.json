@@ -9,7 +9,11 @@
     "build": "tsc",
     "test": "vitest",
     "test:watch": "vitest --watch",
+    "test:ci": "vitest run --coverage",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "test:determinism": "vitest run tests/determinism.test.ts",
     "test:providers": "vitest --config vitest.providers.config.ts",
+    "benchmark": "tsx scripts/benchmark.ts",
     "lint": "eslint src --ext .ts,.tsx",
     "clean": "rm -rf dist"
   },
