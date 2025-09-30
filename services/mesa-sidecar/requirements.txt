@@ -1,0 +1,4 @@
+# Mesa Sidecar Requirements
+mesa>=2.3.0
+numpy>=1.24.0
+blake3>=0.4.0

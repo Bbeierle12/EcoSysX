@@ -1,0 +1,40 @@
+{
+  "name": "@ecosysx/genx-engine",
+  "version": "1.0.0",
+  "description": "Genesis Engine SDK with pluggable simulation providers",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:providers": "vitest --config vitest.providers.config.ts",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "simulation",
+    "agents",
+    "ecosystem",
+    "mesa",
+    "mason",
+    "julia"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "eventemitter3": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "schemas/**/*"
+  ]
+}
