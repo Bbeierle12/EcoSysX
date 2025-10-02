@@ -21,12 +21,10 @@ An AI-powered ecosystem simulation featuring autonomous agents with large langua
 
 ## Hardware Requirements
 
-This simulation runs on standard hardware:
-- **CPU**: Multi-core processor (standard tier sufficient)
-- **RAM**: 2GB minimum, 4GB recommended
-- **Browser**: Modern browser with WebGL support
-
-For large-scale simulations (1000+ agents), GPU acceleration provides enhanced performance.
+This simulation is designed to run on high-performance hardware:
+- **GPUs**: 4x L40S (recommended)
+- **RAM**: 382GB (recommended for large-scale simulations)
+- **CPU**: Multi-core for parallel agent processing
 
 ## Usage
 
