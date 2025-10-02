@@ -28,7 +28,11 @@ const DEFAULT_MODEL_CONFIGS = {
 
 export class LLMService {
   constructor(config = {}) {
-    this.endpoint = config.endpoint || 'http://localhost:11434';
+    // Support both Ollama and Llama service backends
+    this.backend = config.backend || 'auto'; // 'ollama', 'llama', or 'auto'
+    this.ollamaEndpoint = config.ollamaEndpoint || 'http://localhost:11434';
+    this.llamaEndpoint = config.llamaEndpoint || 'http://localhost:8000';
+    this.endpoint = this.ollamaEndpoint; // Default to Ollama for backward compatibility
     this.model = config.model || 'llama3.2:latest';
     this.temperature = config.temperature || 0.7;
     this.maxTokens = config.maxTokens || 512;
@@ -46,6 +50,7 @@ export class LLMService {
     
     // Connection status
     this.isConnected = false;
+    this.activeBackend = null; // 'ollama' or 'llama'
     this.availableModels = [];
     this.lastConnectionCheck = 0;
     
@@ -55,6 +60,7 @@ export class LLMService {
 
   /**
    * Check connection and retrieve available models
+   * Supports both Ollama and Llama service backends
    */
   async checkConnection() {
     const now = Date.now();
@@ -64,42 +70,85 @@ export class LLMService {
       return this.isConnected;
     }
     
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-      
-      const response = await fetch(`${this.endpoint}/api/tags`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        this.availableModels = data.models || [];
-        this.isConnected = this.availableModels.some(m => 
-          m.name.includes('llama') || 
-          m.name.includes('mistral') || 
-          m.name.includes('codellama')
-        );
-        this.lastConnectionCheck = now;
+    // Try Llama service first if in auto mode
+    if (this.backend === 'auto' || this.backend === 'llama') {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         
-        if (this.debug) {
-          console.log(`🤖 LLM Service: Connected to Ollama, ${this.availableModels.length} models available`);
+        const response = await fetch(`${this.llamaEndpoint}/health`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.model_loaded) {
+            this.isConnected = true;
+            this.activeBackend = 'llama';
+            this.endpoint = this.llamaEndpoint;
+            this.lastConnectionCheck = now;
+            
+            if (this.debug) {
+              console.log(`🤖 LLM Service: Connected to Llama service (${data.model})`);
+            }
+            return true;
+          }
         }
-      } else {
-        this.isConnected = false;
-      }
-    } catch (error) {
-      this.isConnected = false;
-      if (this.debug) {
-        console.log(`🤖 LLM Service: Connection failed - ${error.message}`);
+      } catch (error) {
+        if (this.debug && this.backend === 'llama') {
+          console.log(`🤖 LLM Service: Llama service not available - ${error.message}`);
+        }
       }
     }
     
-    return this.isConnected;
+    // Fall back to Ollama
+    if (this.backend === 'auto' || this.backend === 'ollama') {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const response = await fetch(`${this.ollamaEndpoint}/api/tags`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          this.availableModels = data.models || [];
+          this.isConnected = this.availableModels.some(m => 
+            m.name.includes('llama') || 
+            m.name.includes('mistral') || 
+            m.name.includes('codellama')
+          );
+          
+          if (this.isConnected) {
+            this.activeBackend = 'ollama';
+            this.endpoint = this.ollamaEndpoint;
+            this.lastConnectionCheck = now;
+            
+            if (this.debug) {
+              console.log(`🤖 LLM Service: Connected to Ollama, ${this.availableModels.length} models available`);
+            }
+            return true;
+          }
+        }
+      } catch (error) {
+        if (this.debug && this.backend === 'ollama') {
+          console.log(`🤖 LLM Service: Ollama not available - ${error.message}`);
+        }
+      }
+    }
+    
+    this.isConnected = false;
+    this.activeBackend = null;
+    return false;
   }
 
   /**
@@ -215,7 +264,7 @@ Analyze your situation and make your decision now:`;
   }
 
   /**
-   * Send request to Ollama API
+   * Send request to active LLM backend (Ollama or Llama service)
    */
   async callLLM(prompt, options = {}) {
     const startTime = Date.now();
@@ -225,8 +274,134 @@ Analyze your situation and make your decision now:`;
     const isConnected = await this.checkConnection();
     if (!isConnected) {
       this.stats.failedRequests++;
-      throw new Error('LLM service not available - Ollama may not be running or accessible');
+      throw new Error('LLM service not available - Neither Ollama nor Llama service are accessible');
     }
+    
+    // Route to appropriate backend
+    if (this.activeBackend === 'llama') {
+      return this.callLlamaService(prompt, options, startTime);
+    } else {
+      return this.callOllamaService(prompt, options, startTime);
+    }
+  }
+
+  /**
+   * Send request to Llama service
+   */
+  async callLlamaService(prompt, options = {}, startTime) {
+    const temperature = options.temperature || this.temperature;
+    const maxTokens = options.maxTokens || this.maxTokens;
+    
+    // Extract agent data from prompt for Llama service format
+    const agentData = this.extractAgentDataFromPrompt(prompt);
+    
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      
+      const requestBody = {
+        agent: agentData,
+        max_tokens: maxTokens,
+        temperature: temperature
+      };
+      
+      if (this.debug) {
+        console.log(`🤖 Llama Service Request:`, { agentData, temperature, maxTokens });
+      }
+      
+      const response = await fetch(`${this.llamaEndpoint}/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}. ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.fallback) {
+        throw new Error('Llama service returned fallback response');
+      }
+      
+      // Update performance stats
+      const responseTime = Date.now() - startTime;
+      this.stats.successfulRequests++;
+      this.stats.totalResponseTime += responseTime;
+      this.stats.avgResponseTime = this.stats.totalResponseTime / this.stats.successfulRequests;
+      
+      if (this.debug) {
+        console.log(`🤖 Llama Service Response (${responseTime}ms):`, {
+          action: data.decision.action,
+          confidence: data.decision.confidence,
+          parsed: data.decision.parsed
+        });
+      }
+      
+      // Convert Llama service response to standard format
+      return {
+        response: JSON.stringify(data.decision),
+        model: data.model,
+        responseTime: data.response_time || responseTime,
+        success: true,
+        metadata: {
+          backend: 'llama',
+          parsed: data.decision.parsed
+        }
+      };
+      
+    } catch (error) {
+      this.stats.failedRequests++;
+      
+      if (this.debug) {
+        console.error(`🤖 Llama Service Request failed:`, error.message);
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Extract agent data from prompt for Llama service
+   */
+  extractAgentDataFromPrompt(prompt) {
+    // Extract key values using regex
+    const extractValue = (pattern) => {
+      const match = prompt.match(pattern);
+      return match ? match[1].trim() : null;
+    };
+    
+    const extractNumber = (pattern) => {
+      const value = extractValue(pattern);
+      return value ? parseFloat(value) : 0;
+    };
+    
+    return {
+      id: extractValue(/ID:\s*([^\n]+)/) || 'unknown',
+      energy: extractNumber(/Energy:\s*(\d+)%/),
+      age: extractNumber(/Age:\s*(\d+)/),
+      personality: extractValue(/Personality:\s*([^\n]+)/) || 'Balanced',
+      status: extractValue(/Health Status:\s*([^\n]+)/) || 'Healthy',
+      knownResources: extractNumber(/nearest at\s*([\d.]+)\s*units/) ? 1 : 0,
+      knownAgents: extractNumber(/Nearby Agents:\s*(\d+)/),
+      dangerZones: 0,
+      nearbyInfected: extractNumber(/(\d+)\s*infected agents nearby/),
+      recentMemory: prompt.substring(0, 200)
+    };
+  }
+
+  /**
+   * Send request to Ollama API
+   */
+  async callOllamaService(prompt, options = {}, startTime) {
     
     const model = options.model || this.getBestAvailableModel();
     const temperature = options.temperature || this.temperature;
