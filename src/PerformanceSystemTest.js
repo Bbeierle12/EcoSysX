@@ -69,9 +69,9 @@ class PerformanceSystemTest {
       const agent = {
         id: `test_agent_${i}`,
         position: {
-          x: (Math.random() - 0.5) * 80,
+          x: (Math.random() - 0.5) * 173,
           y: 1,
-          z: (Math.random() - 0.5) * 80
+          z: (Math.random() - 0.5) * 173
         },
         velocity: {
           x: 0,

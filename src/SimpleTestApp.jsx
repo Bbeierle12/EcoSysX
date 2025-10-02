@@ -32,9 +32,9 @@ function SimpleTestApp() {
         // Create 5 regular agents
         for (let i = 0; i < 5; i++) {
           const position = {
-            x: (Math.random() - 0.5) * 80,
+            x: (Math.random() - 0.5) * 173,
             y: 1,
-            z: (Math.random() - 0.5) * 80
+            z: (Math.random() - 0.5) * 173
           };
           
           const agent = new Agent(`test_agent_${i}`, position);
@@ -45,9 +45,9 @@ function SimpleTestApp() {
         // Create 2 causal agents
         for (let i = 0; i < 2; i++) {
           const position = {
-            x: (Math.random() - 0.5) * 80,
+            x: (Math.random() - 0.5) * 173,
             y: 1,
-            z: (Math.random() - 0.5) * 80
+            z: (Math.random() - 0.5) * 173
           };
           
           const causalAgent = new CausalAgent(`test_causal_${i}`, position);
