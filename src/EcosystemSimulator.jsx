@@ -5752,6 +5752,10 @@ const EcosystemSimulator = () => {
   const [isObserverPanelCollapsed, setIsObserverPanelCollapsed] = useState(false);
   const [isControlPanelCollapsed, setIsControlPanelCollapsed] = useState(false);
   const [isAgentDetailsPanelCollapsed, setIsAgentDetailsPanelCollapsed] = useState(false);
+  
+  // Mini-map state
+  const [showMiniMap, setShowMiniMap] = useState(true);
+  const miniMapCanvasRef = useRef(null);
   const [llmConfig, setLLMConfig] = useState({
     enabled: false,
     ollamaStatus: 'checking', // 'checking', 'connected', 'disconnected'
@@ -6937,6 +6941,9 @@ const EcosystemSimulator = () => {
         case 'p': // P - toggle player/control panel
           setIsControlPanelCollapsed(prev => !prev);
           break;
+        case 'm': // M - toggle mini-map
+          setShowMiniMap(prev => !prev);
+          break;
         default:
           break;
       }
@@ -6945,6 +6952,98 @@ const EcosystemSimulator = () => {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [resetSimulation]);
+
+  // Mini-map drawing
+  useEffect(() => {
+    if (!showMiniMap || !miniMapCanvasRef.current || agents.length === 0) return;
+    
+    const canvas = miniMapCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const mapSize = 150; // Canvas size
+    const worldSize = 346; // World bounds
+    const scale = mapSize / worldSize;
+    
+    // Clear canvas
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, mapSize, mapSize);
+    
+    // Draw border
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, mapSize, mapSize);
+    
+    // Draw grid
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      const pos = (i / 10) * mapSize;
+      ctx.beginPath();
+      ctx.moveTo(pos, 0);
+      ctx.lineTo(pos, mapSize);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, pos);
+      ctx.lineTo(mapSize, pos);
+      ctx.stroke();
+    }
+    
+    // Draw resources as small green dots
+    environment.resources.forEach(resource => {
+      if (resource.available) {
+        const x = (resource.position.x + worldSize/2) * scale;
+        const y = (resource.position.z + worldSize/2) * scale;
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    
+    // Draw agents
+    agents.forEach(agent => {
+      const x = (agent.position.x + worldSize/2) * scale;
+      const y = (agent.position.z + worldSize/2) * scale;
+      
+      // Color based on agent type/status
+      if (agent.status === 'Infected') {
+        ctx.fillStyle = '#ef4444'; // Red
+      } else if (agent instanceof CausalAgent) {
+        ctx.fillStyle = '#fbbf24'; // Gold
+      } else {
+        ctx.fillStyle = '#60a5fa'; // Blue
+      }
+      
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Highlight selected agent
+      if (selectedAgent && agent.id === selectedAgent.id) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    });
+    
+    // Draw camera position indicator
+    if (cameraRef.current) {
+      const camX = (cameraRef.current.position.x + worldSize/2) * scale;
+      const camY = (cameraRef.current.position.z + worldSize/2) * scale;
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(camX, camY, 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(camX - 8, camY);
+      ctx.lineTo(camX + 8, camY);
+      ctx.moveTo(camX, camY - 8);
+      ctx.lineTo(camX, camY + 8);
+      ctx.stroke();
+    }
+  }, [agents, environment.resources, selectedAgent, showMiniMap]);
 
   // Screenshot function
   const takeScreenshot = useCallback(() => {
@@ -7127,7 +7226,7 @@ const EcosystemSimulator = () => {
           style={{ width: '100%', height: '100%' }}
         />
         
-        {/* Performance HUD - Top Right */}
+        {/* Performance HUD - Top Left */}
         <div className="absolute top-4 left-4 bg-black bg-opacity-70 px-3 py-2 rounded text-white text-xs font-mono">
           <div className="flex items-center gap-4">
             <div>
@@ -7152,6 +7251,36 @@ const EcosystemSimulator = () => {
             </div>
           </div>
         </div>
+
+        {/* Mini-Map - Bottom Left */}
+        {showMiniMap && (
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 rounded-lg p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-white text-xs font-bold">🗺️ Map</span>
+              <button
+                onClick={() => setShowMiniMap(false)}
+                className="text-gray-400 hover:text-white text-xs px-1"
+                title="Hide mini-map"
+              >
+                ✕
+              </button>
+            </div>
+            <canvas
+              ref={miniMapCanvasRef}
+              width={150}
+              height={150}
+              className="border border-green-500 rounded"
+            />
+            <div className="mt-1 text-xs text-gray-400 flex justify-between">
+              <span>🟡 Causal</span>
+              <span>🔵 RL</span>
+              <span>🔴 Infected</span>
+            </div>
+            <div className="text-xs text-gray-400 text-center">
+              🟢 Resources | ✚ Camera
+            </div>
+          </div>
+        )}
 
         {/* Notification Toast */}
         {notification && (
@@ -7204,6 +7333,10 @@ const EcosystemSimulator = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-gray-300">Toggle Control Panel</span>
                   <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">P</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Toggle Mini-Map</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">M</kbd>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-300">Show/Hide Help</span>
