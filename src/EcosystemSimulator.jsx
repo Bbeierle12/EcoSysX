@@ -5747,6 +5747,11 @@ const EcosystemSimulator = () => {
   const [showDebugConsole, setShowDebugConsole] = useState(false);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
+  
+  // Collapsible panel states
+  const [isObserverPanelCollapsed, setIsObserverPanelCollapsed] = useState(false);
+  const [isControlPanelCollapsed, setIsControlPanelCollapsed] = useState(false);
+  const [isAgentDetailsPanelCollapsed, setIsAgentDetailsPanelCollapsed] = useState(false);
   const [llmConfig, setLLMConfig] = useState({
     enabled: false,
     ollamaStatus: 'checking', // 'checking', 'connected', 'disconnected'
@@ -6926,6 +6931,12 @@ const EcosystemSimulator = () => {
         case 'c': // C - toggle camera mode
           setCameraMode(prev => prev === 'overview' ? 'follow' : 'overview');
           break;
+        case 'o': // O - toggle observer panel
+          setIsObserverPanelCollapsed(prev => !prev);
+          break;
+        case 'p': // P - toggle player/control panel
+          setIsControlPanelCollapsed(prev => !prev);
+          break;
         default:
           break;
       }
@@ -7187,6 +7198,14 @@ const EcosystemSimulator = () => {
                   <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">C</kbd>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Toggle Observer Panel</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">O</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Toggle Control Panel</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">P</kbd>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-gray-300">Show/Hide Help</span>
                   <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">?</kbd>
                 </div>
@@ -7205,7 +7224,18 @@ const EcosystemSimulator = () => {
         
         {/* Observer Controls Panel - Right Side */}
         <div className="absolute top-4 right-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-sm">
-          <h3 className="text-lg font-bold text-white mb-3">👁️ Observer Controls</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold text-white">👁️ Observer Controls</h3>
+            <button
+              onClick={() => setIsObserverPanelCollapsed(!isObserverPanelCollapsed)}
+              className="text-gray-300 hover:text-white px-2 py-1 text-sm"
+              title={isObserverPanelCollapsed ? "Expand panel" : "Collapse panel"}
+            >
+              {isObserverPanelCollapsed ? '▼' : '▲'}
+            </button>
+          </div>
+          {!isObserverPanelCollapsed && (
+            <>
           <div className="text-xs text-gray-300 mb-3 p-2 bg-gray-700 rounded">
             <p className="font-semibold mb-1">🎥 Camera Controls:</p>
             <p>• Left Click + Drag: Rotate view</p>
@@ -7277,11 +7307,24 @@ const EcosystemSimulator = () => {
               🌍 Overview
             </button>
           </div>
+            </>
+          )}
         </div>
         
         {/* Control Overlay with Enhanced Player Controls */}
         <div className="absolute top-4 left-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-md">
-          <h2 className="text-xl font-bold mb-2">🎮 Ecosystem Player Mode</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-bold">🎮 Ecosystem Player Mode</h2>
+            <button
+              onClick={() => setIsControlPanelCollapsed(!isControlPanelCollapsed)}
+              className="text-gray-300 hover:text-white px-2 py-1 text-sm"
+              title={isControlPanelCollapsed ? "Expand panel" : "Collapse panel"}
+            >
+              {isControlPanelCollapsed ? '▼' : '▲'}
+            </button>
+          </div>
+          {!isControlPanelCollapsed && (
+            <>
           <p className="text-sm mb-3 text-gray-300">
             Control your white agent and interact with the ecosystem. Survive, evolve, and influence the simulation.
           </p>
@@ -7625,14 +7668,27 @@ const EcosystemSimulator = () => {
             <p>• <strong className="text-green-300">Green cubes:</strong> Resources to collect</p>
             <p className="text-purple-300 mt-1">� Analytics: Event-driven windows every 100 steps, checkpoints every 1000</p>
           </div>
+            </>
+          )}
         </div>
         
         {/* Agent Details Display */}
         {selectedAgent && (
           <div className="absolute top-20 right-4 bg-black bg-opacity-95 p-4 rounded-lg max-w-md border border-yellow-400">
-            <h3 className="text-lg font-bold text-yellow-300 mb-2">
-              🧠 Agent {selectedAgent.id}
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-bold text-yellow-300">
+                🧠 Agent {selectedAgent.id.substring(0, 8)}
+              </h3>
+              <button
+                onClick={() => setIsAgentDetailsPanelCollapsed(!isAgentDetailsPanelCollapsed)}
+                className="text-gray-300 hover:text-white px-2 py-1 text-sm"
+                title={isAgentDetailsPanelCollapsed ? "Expand details" : "Collapse details"}
+              >
+                {isAgentDetailsPanelCollapsed ? '▼' : '▲'}
+              </button>
+            </div>
+            {!isAgentDetailsPanelCollapsed && (
+              <>
             
             {/* Basic Info */}
             <div className="mb-3 p-2 bg-gray-800 rounded">
@@ -7905,6 +7961,8 @@ const EcosystemSimulator = () => {
                   </div>
                 )}
               </div>
+            )}
+              </>
             )}
             
             <button 
