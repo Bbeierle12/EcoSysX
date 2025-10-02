@@ -197,7 +197,7 @@ class HighPerformanceEcosystemIntegration {
     }
     
     // Boundary constraints
-    const bounds = 20;
+    const bounds = 80;
     agent.position.x = Math.max(-bounds, Math.min(bounds, agent.position.x));
     agent.position.z = Math.max(-bounds, Math.min(bounds, agent.position.z));
   }

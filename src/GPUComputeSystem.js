@@ -90,7 +90,7 @@ class GPUComputeSystem {
         textureSize: { value: Math.ceil(Math.sqrt(this.maxAgents)) },
         maxAgents: { value: this.maxAgents },
         neighborRadius: { value: 8.0 },
-        worldBounds: { value: new THREE.Vector2(40, 40) }
+        worldBounds: { value: new THREE.Vector2(160, 160) }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -276,7 +276,7 @@ class GPUComputeSystem {
         textureSize: { value: Math.ceil(Math.sqrt(this.maxAgents)) },
         maxAgents: { value: this.maxAgents },
         deltaTime: { value: 0.016 }, // ~60fps
-        worldBounds: { value: new THREE.Vector2(20, 20) },
+        worldBounds: { value: new THREE.Vector2(80, 80) },
         moveSpeed: { value: 1.5 }
       },
       vertexShader: `

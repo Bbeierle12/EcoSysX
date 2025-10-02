@@ -1940,7 +1940,7 @@ class Agent {
     this.velocity.x *= 0.8;
     this.velocity.z *= 0.8;
     
-    const bounds = 20;
+    const bounds = 80;
     if (Math.abs(this.position.x) > bounds) {
       this.position.x = Math.sign(this.position.x) * bounds;
       this.velocity.x *= -0.5;
@@ -5084,7 +5084,7 @@ class Environment {
       resourceValue *= 1.2; // Rain improves resource quality
     }
     
-    const distance = Math.random() * 18 + 2;
+    const distance = Math.random() * 72 + 8;
     const angle = Math.random() * Math.PI * 2;
     
     this.resources.set(id, {
@@ -6223,7 +6223,7 @@ const EcosystemSimulator = () => {
       0.1,
       1000
     );
-    camera.position.set(30, 25, 30);
+    camera.position.set(120, 100, 120);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -6245,7 +6245,7 @@ const EcosystemSimulator = () => {
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
-    const groundGeometry = new THREE.PlaneGeometry(50, 50);
+    const groundGeometry = new THREE.PlaneGeometry(200, 200);
     const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x4a6741 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
