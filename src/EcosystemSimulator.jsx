@@ -6583,17 +6583,23 @@ const EcosystemSimulator = () => {
       updatedEnvironment.updateTerrainOccupancy(agents);
 
       // Use GPU compute system for agent updates if available
+      let useGPU = false;
       if (highPerformanceSystemRef.current && agents.length > 100) {
         console.log('🚀 Using GPU compute system for agent updates');
         try {
           highPerformanceSystemRef.current.performSimulationStep(agents, updatedEnvironment, step);
+          useGPU = true;
+          console.log('✅ GPU compute successful');
         } catch (error) {
           console.warn('⚠️ GPU compute failed, falling back to CPU:', error);
+          useGPU = false;
         }
       }
 
-    setAgents(currentAgents => {
-      const newAgents = [...currentAgents];
+    // Only use CPU processing if GPU is not available or failed
+    if (!useGPU) {
+      setAgents(currentAgents => {
+        const newAgents = [...currentAgents];
       const initialPopulation = newAgents.length; // Track initial population for mass balance
       const toRemove = [];
       const toAdd = [];
