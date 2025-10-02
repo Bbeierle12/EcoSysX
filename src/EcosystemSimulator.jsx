@@ -7033,6 +7033,76 @@ const EcosystemSimulator = () => {
           </div>
         )}
         
+        {/* Observer Controls Panel - Right Side */}
+        <div className="absolute top-4 right-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-sm">
+          <h3 className="text-lg font-bold text-white mb-3">👁️ Observer Controls</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                // Find highest energy agent
+                const highestEnergyAgent = agents.reduce((max, agent) => 
+                  agent.energy > max.energy ? agent : max, agents[0]);
+                if (highestEnergyAgent) {
+                  setSelectedAgent(highestEnergyAgent);
+                  showNotification(`⚡ Following highest energy agent: ${highestEnergyAgent.id.substring(0, 8)}`, 'info');
+                }
+              }}
+              className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm"
+            >
+              ⚡ Highest Energy
+            </button>
+            
+            <button
+              onClick={() => {
+                // Find oldest agent
+                const oldestAgent = agents.reduce((oldest, agent) => 
+                  agent.getAge(step) > oldest.getAge(step) ? agent : oldest, agents[0]);
+                if (oldestAgent) {
+                  setSelectedAgent(oldestAgent);
+                  showNotification(`👴 Following oldest agent: ${oldestAgent.id.substring(0, 8)} (Age: ${oldestAgent.getAge(step)})`, 'info');
+                }
+              }}
+              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm"
+            >
+              👴 Oldest Agent
+            </button>
+            
+            <button
+              onClick={() => {
+                // Find random agent
+                const randomAgent = agents[Math.floor(Math.random() * agents.length)];
+                if (randomAgent) {
+                  setSelectedAgent(randomAgent);
+                  showNotification(`🎲 Following random agent: ${randomAgent.id.substring(0, 8)}`, 'info');
+                }
+              }}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+            >
+              🎲 Random Agent
+            </button>
+            
+            <button
+              onClick={() => {
+                // Show ecosystem overview
+                const totalEnergy = agents.reduce((sum, a) => sum + a.energy, 0);
+                const avgAge = agents.reduce((sum, a) => sum + a.getAge(step), 0) / agents.length;
+                const infected = agents.filter(a => a.status === 'Infected').length;
+                console.log('🌍 Ecosystem Overview:', {
+                  totalAgents: agents.length,
+                  totalEnergy: totalEnergy.toFixed(1),
+                  averageAge: avgAge.toFixed(1),
+                  infected,
+                  healthyPercent: ((agents.length - infected) / agents.length * 100).toFixed(1) + '%'
+                });
+                showNotification(`🌍 Ecosystem: ${agents.length} agents, ${infected} infected`, 'info');
+              }}
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-sm"
+            >
+              🌍 Overview
+            </button>
+          </div>
+        </div>
+        
         {/* Control Overlay with Enhanced Player Controls */}
         <div className="absolute top-4 left-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-md">
           <h2 className="text-xl font-bold mb-2">🎮 Ecosystem Player Mode</h2>
@@ -7087,76 +7157,6 @@ const EcosystemSimulator = () => {
             >
               📸 Screenshot
             </button>
-          </div>
-          
-          {/* Observer Controls */}
-          <div className="mt-3 p-2 bg-gray-800 rounded border border-white">
-            <h3 className="text-sm font-bold text-white mb-2">👁️ Observer Controls</h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                onClick={() => {
-                  // Find highest energy agent
-                  const highestEnergyAgent = agents.reduce((max, agent) => 
-                    agent.energy > max.energy ? agent : max, agents[0]);
-                  if (highestEnergyAgent) {
-                    setSelectedAgent(highestEnergyAgent);
-                    showNotification(`⚡ Following highest energy agent: ${highestEnergyAgent.id.substring(0, 8)}`, 'info');
-                  }
-                }}
-                className="px-2 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs"
-              >
-                ⚡ Highest Energy
-              </button>
-              
-              <button
-                onClick={() => {
-                  // Find oldest agent
-                  const oldestAgent = agents.reduce((oldest, agent) => 
-                    agent.getAge(step) > oldest.getAge(step) ? agent : oldest, agents[0]);
-                  if (oldestAgent) {
-                    setSelectedAgent(oldestAgent);
-                    showNotification(`� Following oldest agent: ${oldestAgent.id.substring(0, 8)} (Age: ${oldestAgent.getAge(step)})`, 'info');
-                  }
-                }}
-                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs"
-              >
-                � Oldest Agent
-              </button>
-              
-              <button
-                onClick={() => {
-                  // Find random agent
-                  const randomAgent = agents[Math.floor(Math.random() * agents.length)];
-                  if (randomAgent) {
-                    setSelectedAgent(randomAgent);
-                    showNotification(`🎲 Following random agent: ${randomAgent.id.substring(0, 8)}`, 'info');
-                  }
-                }}
-                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
-              >
-                🎲 Random Agent
-              </button>
-              
-              <button
-                onClick={() => {
-                  // Show ecosystem overview
-                  const totalEnergy = agents.reduce((sum, a) => sum + a.energy, 0);
-                  const avgAge = agents.reduce((sum, a) => sum + a.getAge(step), 0) / agents.length;
-                  const infected = agents.filter(a => a.status === 'Infected').length;
-                  console.log('🌍 Ecosystem Overview:', {
-                    totalAgents: agents.length,
-                    totalEnergy: totalEnergy.toFixed(1),
-                    averageAge: avgAge.toFixed(1),
-                    infected,
-                    healthyPercent: ((agents.length - infected) / agents.length * 100).toFixed(1) + '%'
-                  });
-                  showNotification(`🌍 Ecosystem: ${agents.length} agents, ${infected} infected`, 'info');
-                }}
-                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
-              >
-                🌍 Overview
-              </button>
-            </div>
           </div>
           
           {/* Analysis Controls */}
