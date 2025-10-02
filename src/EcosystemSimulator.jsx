@@ -5743,7 +5743,9 @@ const EcosystemSimulator = () => {
   const [performanceData, setPerformanceData] = useState({ memory: 0, fps: 0, lastTime: 0 });
   const [watchdogAlerts, setWatchdogAlerts] = useState([]);
   const [exportFolderLabel, setExportFolderLabel] = useState('Default Downloads');
+  const [simulationSpeed, setSimulationSpeed] = useState(1); // Speed multiplier: 0.5x, 1x, 2x, 4x
   const [showDebugConsole, setShowDebugConsole] = useState(false);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
   const [llmConfig, setLLMConfig] = useState({
     enabled: false,
@@ -6265,6 +6267,11 @@ const EcosystemSimulator = () => {
     ground.name = 'ground';
     scene.add(ground);
 
+    // Add grid helper for depth perception
+    const gridHelper = new THREE.GridHelper(346, 34, 0x2a4a2a, 0x1a3a1a);
+    gridHelper.position.y = 0.1; // Slightly above ground to prevent z-fighting
+    scene.add(gridHelper);
+
     // Initialize High-Performance System
     console.log('🚀 Initializing High-Performance Ecosystem Integration...');
     try {
@@ -6392,8 +6399,28 @@ const EcosystemSimulator = () => {
     renderer.domElement.addEventListener('click', handleClick);
 
     // Animation loop
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let fps = 0;
+
     const animate = () => {
       requestAnimationFrame(animate);
+      
+      // Calculate FPS
+      frameCount++;
+      const currentTime = performance.now();
+      if (currentTime >= lastTime + 1000) {
+        fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+        frameCount = 0;
+        lastTime = currentTime;
+        
+        // Update performance data
+        setPerformanceData(prev => ({
+          ...prev,
+          fps: fps,
+          lastTime: currentTime
+        }));
+      }
       
       if (agents && agents.length > 0) {
         if (highPerformanceSystemRef.current) {
@@ -6866,10 +6893,47 @@ const EcosystemSimulator = () => {
 
     const interval = setInterval(() => {
       simulationStep();
-    }, 100);
+    }, 100 / simulationSpeed); // Speed multiplier: higher = faster
 
     return () => clearInterval(interval);
-  }, [isRunning, simulationStep]);
+  }, [isRunning, simulationStep, simulationSpeed]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Ignore if typing in input field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ': // Spacebar - pause/play
+          e.preventDefault();
+          setIsRunning(prev => !prev);
+          break;
+        case '?': // Question mark - show help
+          setShowKeyboardHelp(prev => !prev);
+          break;
+        case '+':
+        case '=': // Plus - increase speed
+          setSimulationSpeed(prev => Math.min(prev * 2, 8));
+          break;
+        case '-':
+        case '_': // Minus - decrease speed
+          setSimulationSpeed(prev => Math.max(prev / 2, 0.25));
+          break;
+        case 'r': // R - reset
+          resetSimulation();
+          break;
+        case 'c': // C - toggle camera mode
+          setCameraMode(prev => prev === 'overview' ? 'follow' : 'overview');
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [resetSimulation]);
 
   // Screenshot function
   const takeScreenshot = useCallback(() => {
@@ -7052,6 +7116,32 @@ const EcosystemSimulator = () => {
           style={{ width: '100%', height: '100%' }}
         />
         
+        {/* Performance HUD - Top Right */}
+        <div className="absolute top-4 left-4 bg-black bg-opacity-70 px-3 py-2 rounded text-white text-xs font-mono">
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-gray-400">FPS:</span>{' '}
+              <span className={performanceData.fps >= 30 ? 'text-green-400' : 'text-red-400'}>
+                {performanceData.fps}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-400">Agents:</span>{' '}
+              <span className="text-blue-400">{agents.length}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Step:</span>{' '}
+              <span className="text-purple-400">{step}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">GPU:</span>{' '}
+              <span className={highPerformanceSystemRef.current ? 'text-green-400' : 'text-gray-400'}>
+                {highPerformanceSystemRef.current && agents.length > 100 ? 'ON' : 'OFF'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Notification Toast */}
         {notification && (
           <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-lg transition-all ${
@@ -7061,6 +7151,55 @@ const EcosystemSimulator = () => {
             'bg-blue-600'
           }`}>
             {notification.message}
+          </div>
+        )}
+
+        {/* Keyboard Shortcuts Help Overlay */}
+        {showKeyboardHelp && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+            onClick={() => setShowKeyboardHelp(false)}
+          >
+            <div 
+              className="bg-gray-900 border-2 border-green-500 rounded-lg p-6 max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-2xl font-bold text-green-400 mb-4">⌨️ Keyboard Shortcuts</h3>
+              <div className="space-y-3 text-white">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Pause/Resume</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">Space</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Speed Up</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">+ / =</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Slow Down</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">- / _</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Reset Simulation</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">R</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Toggle Camera Mode</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">C</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-300">Show/Hide Help</span>
+                  <kbd className="px-3 py-1 bg-gray-700 rounded border border-gray-600 font-mono">?</kbd>
+                </div>
+              </div>
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() => setShowKeyboardHelp(false)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white font-semibold transition-colors"
+                >
+                  Got it!
+                </button>
+              </div>
+            </div>
           </div>
         )}
         
@@ -7194,6 +7333,29 @@ const EcosystemSimulator = () => {
             >
               📸 Screenshot
             </button>
+          </div>
+
+          {/* Speed Controls */}
+          <div className="mt-3 p-3 bg-gray-800 rounded">
+            <h3 className="text-sm font-bold mb-2">⚡ Simulation Speed</h3>
+            <div className="flex gap-2">
+              {[0.25, 0.5, 1, 2, 4, 8].map(speed => (
+                <button
+                  key={speed}
+                  onClick={() => setSimulationSpeed(speed)}
+                  className={`px-3 py-1 rounded text-sm ${
+                    simulationSpeed === speed 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  }`}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Current: {simulationSpeed}x | {(100 / simulationSpeed).toFixed(0)}ms per step
+            </p>
           </div>
           
           {/* Analysis Controls */}
