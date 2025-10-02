@@ -6819,8 +6819,10 @@ const EcosystemSimulator = () => {
       }
 
       return newAgents;
-    });
-    // Commit environment state AFTER agents processed
+      });
+    } // End of if (!useGPU) block
+    
+    // Commit environment state AFTER agents processed (for both GPU and CPU paths)
     setEnvironment(updatedEnvironment);
     if (sceneRef.current) {
       updateResourceVisualization(sceneRef.current, updatedEnvironment.resources);
