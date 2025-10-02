@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as d3 from 'd3';
 import { llmService } from './LLMService.js';
 import HighPerformanceEcosystemIntegration from './HighPerformanceEcosystemIntegration.js';
@@ -5716,6 +5717,7 @@ const EcosystemSimulator = () => {
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
+  const controlsRef = useRef(null);
   const resourceMeshesRef = useRef(new Map());
   // Track persistent terrain & territory meshes separately to avoid recreating every frame
   const terrainMeshesRef = useRef(new Map());
@@ -6237,6 +6239,16 @@ const EcosystemSimulator = () => {
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
+    // Initialize OrbitControls for camera movement
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.screenSpacePanning = false;
+    controls.minDistance = 50;
+    controls.maxDistance = 800;
+    controls.maxPolarAngle = Math.PI / 2; // Prevent camera from going below ground
+    controlsRef.current = controls;
+
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     scene.add(ambientLight);
 
@@ -6404,6 +6416,11 @@ const EcosystemSimulator = () => {
           camera.position.set(agentPos.x + 10, 15, agentPos.z + 10);
           camera.lookAt(agentPos.x, agentPos.y, agentPos.z);
         }
+      } else {
+        // Update orbit controls when not in follow mode
+        if (controlsRef.current) {
+          controlsRef.current.update();
+        }
       }
       
       renderer.render(scene, camera);
@@ -6423,6 +6440,12 @@ const EcosystemSimulator = () => {
       if (mountRef.current && rendererRef.current) {
         window.removeEventListener('resize', handleResize);
         renderer.domElement.removeEventListener('click', handleClick);
+        
+        // Cleanup orbit controls
+        if (controlsRef.current) {
+          controlsRef.current.dispose();
+          controlsRef.current = null;
+        }
         
         // Cleanup high-performance system
         if (highPerformanceSystemRef.current) {
@@ -7036,6 +7059,12 @@ const EcosystemSimulator = () => {
         {/* Observer Controls Panel - Right Side */}
         <div className="absolute top-4 right-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-sm">
           <h3 className="text-lg font-bold text-white mb-3">👁️ Observer Controls</h3>
+          <div className="text-xs text-gray-300 mb-3 p-2 bg-gray-700 rounded">
+            <p className="font-semibold mb-1">🎥 Camera Controls:</p>
+            <p>• Left Click + Drag: Rotate view</p>
+            <p>• Right Click + Drag: Pan camera</p>
+            <p>• Scroll Wheel: Zoom in/out</p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => {
