@@ -1,0 +1,32 @@
+{
+  "simulation": {
+    "maxSteps": 10000,
+    "worldSize": 100.0
+  },
+  "agents": {
+    "initialPopulation": 100,
+    "movementSpeed": {
+      "min": 0.5,
+      "max": 2.0
+    },
+    "energyRange": {
+      "min": 50.0,
+      "max": 100.0
+    },
+    "reproductionEnabled": true
+  },
+  "disease": {
+    "enabled": true,
+    "transmissionRate": 0.3,
+    "recoveryRate": 0.1,
+    "mortalityRate": 0.05
+  },
+  "environment": {
+    "resourceRegeneration": true,
+    "resourceDensity": 1.0
+  },
+  "rng": {
+    "seed": 42,
+    "independentStreams": true
+  }
+}
