@@ -8,16 +8,22 @@ class QAction;
 class QDockWidget;
 class QLabel;
 class QThread;
+class QTabWidget;
 class ConfigPanel;
 class EventLogPanel;
+class MetricsPanel;
+class VisualizationWidget;
+class MetricsChartWidget;
 
 /**
  * @brief The MainWindow is the main application window
  * 
  * This window provides the primary UI for interacting with the EcoSysX engine:
- * - Toolbar with Start/Stop/Step controls
+ * - Toolbar with Start/Stop/Step/Reset/Zoom controls
  * - ConfigPanel docked on the left
- * - EventLogPanel docked on the bottom
+ * - MetricsPanel docked on the right
+ * - VisualizationWidget as central widget
+ * - EventLogPanel and MetricsChartWidget in bottom tabbed dock
  * - Status bar showing engine state
  * - Menu bar with File/Edit/View/Help
  * 
@@ -69,6 +75,10 @@ private slots:
     void onStop();
     void onStep();
     void onReset();
+    void onZoomIn();
+    void onZoomOut();
+    void onResetZoom();
+    void onExportChart();
     
     // EngineClient signals
     void onEngineStarted();
@@ -152,10 +162,17 @@ private:
     int m_currentStep;
     
     // UI components
+    VisualizationWidget* m_visualizationWidget;
     ConfigPanel* m_configPanel;
+    MetricsPanel* m_metricsPanel;
     EventLogPanel* m_logPanel;
+    MetricsChartWidget* m_chartWidget;
+    QTabWidget* m_bottomTabs;
+    
+    // Dock widgets
     QDockWidget* m_configDock;
-    QDockWidget* m_logDock;
+    QDockWidget* m_metricsDock;
+    QDockWidget* m_bottomDock;
     
     // Actions
     QAction* m_newAction;
@@ -166,12 +183,18 @@ private:
     QAction* m_preferencesAction;
     QAction* m_toggleConfigAction;
     QAction* m_toggleLogAction;
+    QAction* m_toggleMetricsAction;
+    QAction* m_toggleBottomDockAction;
     QAction* m_aboutAction;
     QAction* m_documentationAction;
     QAction* m_startAction;
     QAction* m_stopAction;
     QAction* m_stepAction;
     QAction* m_resetAction;
+    QAction* m_zoomInAction;
+    QAction* m_zoomOutAction;
+    QAction* m_resetZoomAction;
+    QAction* m_exportChartAction;
     
     // Status bar
     QLabel* m_statusLabel;

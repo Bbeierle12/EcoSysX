@@ -1,6 +1,9 @@
 #include "MainWindow.h"
 #include "panels/ConfigPanel.h"
 #include "panels/EventLogPanel.h"
+#include "panels/MetricsPanel.h"
+#include "widgets/VisualizationWidget.h"
+#include "widgets/MetricsChartWidget.h"
 #include <QMenuBar>
 #include <QToolBar>
 #include <QStatusBar>
@@ -14,6 +17,7 @@
 #include <QUrl>
 #include <QThread>
 #include <QApplication>
+#include <QTabWidget>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -31,6 +35,10 @@ MainWindow::MainWindow(QWidget* parent)
     createToolBar();
     createDockWidgets();
     createStatusBar();
+    
+    // Sprint 2: Set central widget (2D visualization)
+    m_visualizationWidget = new VisualizationWidget();
+    setCentralWidget(m_visualizationWidget);
     
     // Create engine client in worker thread
     m_engineThread = new QThread(this);
@@ -163,6 +171,52 @@ void MainWindow::onToggleLogPanel() {
     m_logDock->setVisible(!m_logDock->isVisible());
 }
 
+void MainWindow::onToggleMetricsPanel() {
+    m_metricsDock->setVisible(!m_metricsDock->isVisible());
+}
+
+void MainWindow::onToggleBottomDock() {
+    m_bottomDock->setVisible(!m_bottomDock->isVisible());
+}
+
+void MainWindow::onZoomIn() {
+    if (m_visualizationWidget) {
+        m_visualizationWidget->zoomIn();
+    }
+}
+
+void MainWindow::onZoomOut() {
+    if (m_visualizationWidget) {
+        m_visualizationWidget->zoomOut();
+    }
+}
+
+void MainWindow::onResetZoom() {
+    if (m_visualizationWidget) {
+        m_visualizationWidget->resetZoom();
+    }
+}
+
+void MainWindow::onExportChart() {
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        "Export Metrics Chart",
+        "metrics_chart.png",
+        "PNG Images (*.png);;All Files (*)");
+    
+    if (!fileName.isEmpty()) {
+        if (m_chartWidget->exportToPng(fileName)) {
+            m_logPanel->logInfo("Chart exported to: " + fileName);
+            QMessageBox::information(this, "Export Successful",
+                "Chart exported successfully to:\n" + fileName);
+        } else {
+            m_logPanel->logError("Failed to export chart to: " + fileName);
+            QMessageBox::warning(this, "Export Failed",
+                "Failed to export chart to:\n" + fileName);
+        }
+    }
+}
+
 void MainWindow::onAbout() {
     QMessageBox::about(this, "About EcoSysX",
         "<h2>EcoSysX Qt GUI</h2>"
@@ -257,8 +311,12 @@ void MainWindow::onEngineStateChanged(EngineClient::State state) {
 }
 
 void MainWindow::onEngineSnapshotReceived(const QJsonObject& snapshot) {
-    // Future: Display snapshot data in visualization
-    m_logPanel->logInfo("Snapshot received");
+    // Update all visualization components
+    m_metricsPanel->updateMetrics(snapshot);
+    m_visualizationWidget->updateAgents(snapshot);
+    
+    int step = snapshot["step"].toInt();
+    m_chartWidget->addDataPoint(step, snapshot);
 }
 
 void MainWindow::onEngineLogMessage(const QString& message) {
@@ -341,6 +399,27 @@ void MainWindow::createActions() {
     
     m_resetAction = new QAction("Reset", this);
     m_resetAction->setToolTip("Reset simulation state");
+    
+    // Sprint 2: Visualization controls
+    m_zoomInAction = new QAction("Zoom &In", this);
+    m_zoomInAction->setShortcut(QKeySequence::ZoomIn);
+    m_zoomInAction->setToolTip("Zoom in on visualization");
+    connect(m_zoomInAction, &QAction::triggered, this, &MainWindow::onZoomIn);
+    
+    m_zoomOutAction = new QAction("Zoom &Out", this);
+    m_zoomOutAction->setShortcut(QKeySequence::ZoomOut);
+    m_zoomOutAction->setToolTip("Zoom out on visualization");
+    connect(m_zoomOutAction, &QAction::triggered, this, &MainWindow::onZoomOut);
+    
+    m_resetZoomAction = new QAction("&Reset Zoom", this);
+    m_resetZoomAction->setShortcut(QKeySequence("Ctrl+0"));
+    m_resetZoomAction->setToolTip("Reset visualization zoom to 1:1");
+    connect(m_resetZoomAction, &QAction::triggered, this, &MainWindow::onResetZoom);
+    
+    m_exportChartAction = new QAction("&Export Chart...", this);
+    m_exportChartAction->setShortcut(QKeySequence("Ctrl+E"));
+    m_exportChartAction->setToolTip("Export metrics chart to PNG file");
+    connect(m_exportChartAction, &QAction::triggered, this, &MainWindow::onExportChart);
 }
 
 void MainWindow::createMenus() {
@@ -362,6 +441,27 @@ void MainWindow::createMenus() {
     QMenu* viewMenu = menuBar()->addMenu("&View");
     viewMenu->addAction(m_toggleConfigAction);
     viewMenu->addAction(m_toggleLogAction);
+    viewMenu->addSeparator();
+    
+    // Sprint 2: Add new dock toggles
+    m_toggleMetricsAction = new QAction("Show &Metrics Panel", this);
+    m_toggleMetricsAction->setCheckable(true);
+    m_toggleMetricsAction->setChecked(true);
+    connect(m_toggleMetricsAction, &QAction::triggered, this, &MainWindow::onToggleMetricsPanel);
+    viewMenu->addAction(m_toggleMetricsAction);
+    
+    m_toggleBottomDockAction = new QAction("Show &Bottom Panel", this);
+    m_toggleBottomDockAction->setCheckable(true);
+    m_toggleBottomDockAction->setChecked(true);
+    connect(m_toggleBottomDockAction, &QAction::triggered, this, &MainWindow::onToggleBottomDock);
+    viewMenu->addAction(m_toggleBottomDockAction);
+    
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_zoomInAction);
+    viewMenu->addAction(m_zoomOutAction);
+    viewMenu->addAction(m_resetZoomAction);
+    viewMenu->addSeparator();
+    viewMenu->addAction(m_exportChartAction);
     
     // Help menu
     QMenu* helpMenu = menuBar()->addMenu("&Help");
@@ -378,6 +478,12 @@ void MainWindow::createToolBar() {
     toolbar->addAction(m_stepAction);
     toolbar->addSeparator();
     toolbar->addAction(m_resetAction);
+    
+    // Sprint 2: Add visualization controls to toolbar
+    toolbar->addSeparator();
+    toolbar->addAction(m_zoomInAction);
+    toolbar->addAction(m_zoomOutAction);
+    toolbar->addAction(m_resetZoomAction);
 }
 
 void MainWindow::createDockWidgets() {
@@ -388,18 +494,33 @@ void MainWindow::createDockWidgets() {
     m_configDock->setWidget(m_configPanel);
     addDockWidget(Qt::LeftDockWidgetArea, m_configDock);
     
-    // Log panel (bottom)
+    // Sprint 2: Metrics panel (right)
+    m_metricsPanel = new MetricsPanel();
+    m_metricsDock = new QDockWidget("Metrics", this);
+    m_metricsDock->setObjectName("MetricsDock");
+    m_metricsDock->setWidget(m_metricsPanel);
+    addDockWidget(Qt::RightDockWidgetArea, m_metricsDock);
+    
+    // Sprint 2: Bottom tabbed dock (Event Log + Charts)
     m_logPanel = new EventLogPanel();
-    m_logDock = new QDockWidget("Event Log", this);
-    m_logDock->setObjectName("LogDock");
-    m_logDock->setWidget(m_logPanel);
-    addDockWidget(Qt::BottomDockWidgetArea, m_logDock);
+    m_chartWidget = new MetricsChartWidget();
+    
+    m_bottomTabs = new QTabWidget();
+    m_bottomTabs->addTab(m_logPanel, "Event Log");
+    m_bottomTabs->addTab(m_chartWidget, "Metrics Charts");
+    
+    m_bottomDock = new QDockWidget("Data", this);
+    m_bottomDock->setObjectName("BottomDock");
+    m_bottomDock->setWidget(m_bottomTabs);
+    addDockWidget(Qt::BottomDockWidgetArea, m_bottomDock);
     
     // Synchronize toggle actions with dock visibility
     connect(m_configDock, &QDockWidget::visibilityChanged,
             m_toggleConfigAction, &QAction::setChecked);
-    connect(m_logDock, &QDockWidget::visibilityChanged,
-            m_toggleLogAction, &QAction::setChecked);
+    connect(m_metricsDock, &QDockWidget::visibilityChanged,
+            m_toggleMetricsAction, &QAction::setChecked);
+    connect(m_bottomDock, &QDockWidget::visibilityChanged,
+            m_toggleBottomDockAction, &QAction::setChecked);
 }
 
 void MainWindow::createStatusBar() {

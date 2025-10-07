@@ -6,6 +6,9 @@ set(SOURCES
     ui/MainWindow.cpp
     ui/panels/ConfigPanel.cpp
     ui/panels/EventLogPanel.cpp
+    ui/panels/MetricsPanel.cpp
+    ui/widgets/VisualizationWidget.cpp
+    ui/widgets/MetricsChartWidget.cpp
 )
 
 set(HEADERS
@@ -15,17 +18,9 @@ set(HEADERS
     ui/MainWindow.h
     ui/panels/ConfigPanel.h
     ui/panels/EventLogPanel.h
-) files
-set(SOURCES
-    main.cpp
-    core/EngineClient.cpp
-    core/Configuration.cpp
-)
-
-set(HEADERS
-    core/EngineClient.h
-    core/Configuration.h
-    utils/ValidationUtils.h
+    ui/panels/MetricsPanel.h
+    ui/widgets/VisualizationWidget.h
+    ui/widgets/MetricsChartWidget.h
 )
 
 # Create executable
@@ -37,6 +32,7 @@ target_link_libraries(ecosysx-gui PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::Gui
+    Qt6::Charts
 )
 
 # Set target properties

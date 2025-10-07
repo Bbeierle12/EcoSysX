@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Network
     Gui
+    Charts
 )
 
 # Output directories

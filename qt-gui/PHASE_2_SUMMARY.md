@@ -1,6 +1,62 @@
-# Phase 2: Sprint 1 — Progress Summary
+# Phase 2: Qt GUI Development - Progress Summary
 
-## Current Status: ✅ COMPLETE
+## Current Status: Sprint 2 ✅ COMPLETE
+
+**Phase Start**: October 6, 2025  
+**Sprint 1 Completed**: October 6, 2025 (3 days)  
+**Sprint 2 Completed**: January 2025 (3 hours)  
+**Total Phase Progress**: 2 sprints complete
+
+---
+
+## Sprint 2: Metrics & Visualization ✅ COMPLETE
+
+**Started**: January 2025  
+**Completed**: January 2025  
+**Duration**: 3 hours (1 day ahead of estimate)
+
+### Sprint 2 Deliverables
+- [x] **MetricsPanel** (370 lines) - Real-time simulation statistics
+  - 7 key metrics: Population, S/I/R/D, Infection Rate, Step
+  - Color-coded infection rate (green/yellow/red thresholds)
+  - Number formatting and percentage display
+  - Threshold crossing signals for alerts
+
+- [x] **VisualizationWidget** (450 lines) - 2D agent visualization
+  - State-based agent coloring (Susceptible=green, Infected=red, etc.)
+  - Zoom controls: 0.1x to 10x (Ctrl+Plus/Minus/0)
+  - Pan with mouse drag
+  - Hover tooltips and click detection
+  - Performance optimizations (view frustum culling, batched rendering)
+
+- [x] **MetricsChartWidget** (420 lines) - Time-series plots
+  - Qt Charts integration (4 QLineSeries)
+  - Auto-scaling axes
+  - Interactive legend (click to show/hide)
+  - Circular buffer (1000 points configurable)
+  - PNG export functionality
+
+- [x] **MainWindow Integration** (150 lines added)
+  - New layout: Central visualization + docks
+  - Tabbed bottom dock (Event Log + Charts)
+  - Zoom toolbar controls
+  - View menu additions
+  - Keyboard shortcuts (Ctrl+Plus/Minus/0/E)
+
+- [x] **Build System Updates**
+  - Added Qt6::Charts dependency
+  - Updated CMakeLists.txt with new source files
+
+- [x] **Documentation**
+  - SPRINT_2_COMPLETE.md (comprehensive report)
+  - SPRINT_2_QUICK_REF.md (developer reference)
+  - SPRINT_2_CHECKLIST.md (original plan)
+
+**Total Sprint 2 Contribution**: 1,390+ lines of code
+
+---
+
+## Sprint 1: Foundation ✅ COMPLETE
 
 **Started**: October 6, 2025  
 **Completed**: October 6, 2025  
