@@ -1,4 +1,21 @@
-# Add source files
+# Source files
+set(SOURCES
+    main.cpp
+    core/EngineClient.cpp
+    core/Configuration.cpp
+    ui/MainWindow.cpp
+    ui/panels/ConfigPanel.cpp
+    ui/panels/EventLogPanel.cpp
+)
+
+set(HEADERS
+    core/EngineClient.h
+    core/Configuration.h
+    utils/ValidationUtils.h
+    ui/MainWindow.h
+    ui/panels/ConfigPanel.h
+    ui/panels/EventLogPanel.h
+) files
 set(SOURCES
     main.cpp
     core/EngineClient.cpp
