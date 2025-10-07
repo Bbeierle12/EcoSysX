@@ -1,10 +1,18 @@
 # Add source files
 set(SOURCES
     main.cpp
+    core/EngineClient.cpp
+    core/Configuration.cpp
+)
+
+set(HEADERS
+    core/EngineClient.h
+    core/Configuration.h
+    utils/ValidationUtils.h
 )
 
 # Create executable
-add_executable(ecosysx-gui ${SOURCES})
+add_executable(ecosysx-gui ${SOURCES} ${HEADERS})
 
 # Link Qt libraries
 target_link_libraries(ecosysx-gui PRIVATE
