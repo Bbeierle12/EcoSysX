@@ -4,6 +4,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <QStringList>
 
 EngineClient::EngineClient(QObject* parent)
     : QObject(parent)
@@ -14,7 +15,7 @@ EngineClient::EngineClient(QObject* parent)
     , m_startupTimer(new QTimer(this))
 {
     // Configure process
-    m_process->setProcessChannelMode(QProcess::MergedChannels);
+    m_process->setProcessChannelMode(QProcess::SeparateChannels);
     
     // Connect process signals
     connect(m_process, &QProcess::started,
@@ -23,8 +24,10 @@ EngineClient::EngineClient(QObject* parent)
             this, &EngineClient::onProcessFinished);
     connect(m_process, &QProcess::errorOccurred,
             this, &EngineClient::onProcessError);
-    connect(m_process, &QProcess::readyRead,
-            this, &EngineClient::onReadyRead);
+    connect(m_process, &QProcess::readyReadStandardOutput,
+            this, &EngineClient::onReadyReadStdOut);
+    connect(m_process, &QProcess::readyReadStandardError,
+            this, &EngineClient::onReadyReadStdErr);
     
     // Configure startup timer
     m_startupTimer->setSingleShot(true);
@@ -147,14 +150,18 @@ void EngineClient::stop() {
 }
 
 void EngineClient::sendInit(const QJsonObject& config) {
-    if (!isRunning()) {
-        emit errorOccurred("Cannot send init: engine not running");
+    if (m_state == EngineState::Idle || m_state == EngineState::Stopped) {
+        emit errorOccurred("Cannot send init: engine not started");
         return;
     }
     
     QJsonObject message;
     message["op"] = "init";
-    message["params"] = config;
+    
+    QJsonObject data;
+    data["provider"] = m_defaultProvider;
+    data["config"] = config;
+    message["data"] = data;
     
     emit logMessage("Sending init command");
     sendMessage(message);
@@ -168,7 +175,7 @@ void EngineClient::sendStep(int steps) {
     
     QJsonObject message;
     message["op"] = "step";
-    message["params"] = QJsonObject{{"steps", steps}};
+    message["data"] = QJsonObject{{"steps", steps}};
     
     setState(EngineState::Stepping);
     sendMessage(message);
@@ -182,7 +189,7 @@ void EngineClient::requestSnapshot(const QString& type) {
     
     QJsonObject message;
     message["op"] = "snapshot";
-    message["params"] = QJsonObject{{"type", type}};
+    message["data"] = QJsonObject{{"kind", type}};
     
     sendMessage(message);
 }
@@ -190,7 +197,7 @@ void EngineClient::requestSnapshot(const QString& type) {
 void EngineClient::sendStop() {
     QJsonObject message;
     message["op"] = "stop";
-    message["params"] = QJsonObject();
+    message["data"] = QJsonObject();
     
     emit logMessage("Sending stop command");
     sendMessage(message);
@@ -233,9 +240,9 @@ void EngineClient::onProcessError(QProcess::ProcessError error) {
     setState(EngineState::Error);
 }
 
-void EngineClient::onReadyRead() {
+void EngineClient::onReadyReadStdOut() {
     // Read all available data
-    QByteArray data = m_process->readAll();
+    QByteArray data = m_process->readAllStandardOutput();
     m_lineBuffer.append(QString::fromUtf8(data));
     
     // Process complete lines
@@ -253,6 +260,21 @@ void EngineClient::onReadyRead() {
     if (m_lineBuffer.size() > 1024 * 1024) {  // 1MB limit
         emit errorOccurred("Line buffer overflow - possible protocol error");
         m_lineBuffer.clear();
+    }
+}
+
+void EngineClient::onReadyReadStdErr() {
+    QByteArray data = m_process->readAllStandardError();
+    if (data.isEmpty()) {
+        return;
+    }
+    
+    const QStringList lines = QString::fromUtf8(data).split('\n');
+    for (const QString& rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (!line.isEmpty()) {
+            emit logMessage(QString("[sidecar] %1").arg(line));
+        }
     }
 }
 
@@ -294,43 +316,62 @@ void EngineClient::processLine(const QString& line) {
 }
 
 void EngineClient::handleResponse(const QJsonObject& json) {
-    // Check for error response
-    if (json.contains("status") && json["status"].toString() == "error") {
-        QString error = json["error"].toString("Unknown error");
+    const bool success = json.value("success").toBool(false);
+    const QString op = json.value("op").toString();
+    const QJsonObject data = json.value("data").toObject();
+    
+    if (!success) {
+        const QString error = json.value("error").toString("Unknown engine error");
+        const QString stack = json.value("stack").toString();
+        emit logMessage(QString("Engine error (%1): %2").arg(op.isEmpty() ? QStringLiteral("unknown") : op, error));
+        if (!stack.isEmpty()) {
+            emit logMessage(stack);
+        }
         emit errorOccurred(error);
         setState(EngineState::Error);
         return;
     }
     
-    // Check for phase field (engine lifecycle)
-    if (json.contains("phase")) {
-        QString phase = json["phase"].toString();
-        emit logMessage(QString("Engine phase: %1").arg(phase));
-        
-        if (phase == "error") {
-            QString error = json["error"].toString("Unknown error");
-            emit errorOccurred(error);
-            setState(EngineState::Error);
-            return;
+    if (op == "ping") {
+        m_currentTick = data.value("tick").toInt(m_currentTick);
+        if (m_state == EngineState::Starting) {
+            setState(EngineState::Running);
         }
+        emit stepped(m_currentTick);
+        return;
     }
     
-    // Handle tick updates
-    if (json.contains("tick")) {
-        m_currentTick = json["tick"].toInt();
+    if (op == "init") {
+        m_currentTick = data.value("tick").toInt(0);
         setState(EngineState::Running);
         emit stepped(m_currentTick);
+        emit logMessage("Engine initialized");
+        return;
     }
     
-    // Handle snapshot responses
-    if (json.contains("snapshot")) {
-        emit snapshotReceived(json["snapshot"].toObject());
+    if (op == "step") {
+        m_currentTick = data.value("tick").toInt(m_currentTick);
+        setState(EngineState::Running);
+        emit stepped(m_currentTick);
+        return;
     }
     
-    // Handle other data
-    if (json.contains("data")) {
-        // Future: handle other response types
+    if (op == "snapshot") {
+        const QJsonObject snapshot = data.value("snapshot").toObject();
+        if (!snapshot.isEmpty()) {
+            emit snapshotReceived(snapshot);
+        }
+        return;
     }
+    
+    if (op == "stop") {
+        setState(EngineState::Stopped);
+        emit logMessage("Engine reported stop");
+        return;
+    }
+    
+    // Unknown operation - log for diagnostics
+    emit logMessage(QString("Unhandled response op: %1").arg(op));
 }
 
 void EngineClient::setState(EngineState newState) {

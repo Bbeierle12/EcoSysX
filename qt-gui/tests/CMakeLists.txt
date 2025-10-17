@@ -23,8 +23,7 @@ function(add_qt_test TEST_NAME TEST_SOURCE)
 endfunction()
 
 # Unit tests
-# TODO: Update tst_engineclient to match refactored EngineClient API
-# add_qt_test(tst_engineclient unit/tst_engineclient.cpp)
+add_qt_test(tst_engineclient unit/tst_engineclient.cpp)
 # TODO: Update tst_configuration to match refactored Configuration struct fields
 # add_qt_test(tst_configuration unit/tst_configuration.cpp)
 # TODO: Check if tst_validation_utils needs updates
@@ -65,6 +64,10 @@ target_sources(tst_snapshotbuffer PRIVATE
 # target_include_directories(tst_configuration PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # target_include_directories(tst_validation_utils PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(tst_snapshotbuffer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_sources(tst_engineclient PRIVATE
+    ../src/core/EngineClient.cpp
+)
+target_include_directories(tst_engineclient PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # target_include_directories(tst_mainwindow_integration PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # target_include_directories(tst_engine_integration PRIVATE ${CMAKE_SOURCE_DIR}/src)
 

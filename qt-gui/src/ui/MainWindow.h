@@ -15,6 +15,7 @@ class EventLogPanel;
 class MetricsPanel;
 class VisualizationWidget;
 class MetricsChartWidget;
+class QTimer;
 
 /**
  * @brief The MainWindow is the main application window
@@ -163,6 +164,12 @@ private:
      * @brief Save settings to QSettings
      */
     void saveSettings();
+    
+    /**
+     * @brief Request a snapshot from the engine on the worker thread
+     * @param kind Snapshot kind ("metrics" or "full")
+     */
+    void requestSnapshotAsync(const QString& kind);
 
 private:
     // Core components
@@ -211,4 +218,7 @@ private:
     // Status bar
     QLabel* m_statusLabel;
     QLabel* m_stepLabel;
+    
+    // Timers
+    QTimer* m_snapshotTimer;
 };

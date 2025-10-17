@@ -18,6 +18,7 @@
 #include <QThread>
 #include <QApplication>
 #include <QTabWidget>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -40,6 +41,15 @@ MainWindow::MainWindow(QWidget* parent)
     m_visualizationWidget = new VisualizationWidget();
     setCentralWidget(m_visualizationWidget);
     
+    // Snapshot timer for periodic updates
+    m_snapshotTimer = new QTimer(this);
+    m_snapshotTimer->setInterval(1000);
+    connect(m_snapshotTimer, &QTimer::timeout, this, [this]() {
+        if (m_engineClient && m_engineClient->isRunning()) {
+            requestSnapshotAsync(QStringLiteral("metrics"));
+        }
+    });
+    
     // Create engine client in worker thread
     m_engineThread = new QThread(this);
     m_engineClient = new EngineClient();
@@ -51,7 +61,10 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_engineClient, &EngineClient::stopped,
             this, &MainWindow::onEngineStopped, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::stepped,
-            this, [this](int tick) { onEngineStepped(tick, 0); }, Qt::QueuedConnection);
+            this, [this](int tick) {
+                onEngineStepped(tick, 0);
+                requestSnapshotAsync(QStringLiteral("full"));
+            }, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::errorOccurred,
             this, &MainWindow::onEngineError, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::stateChanged,
@@ -273,10 +286,17 @@ void MainWindow::onEngineStarted() {
     m_logPanel->logInfo("Engine started successfully");
     updateUIState();
     updateStatusBar();
+    if (m_snapshotTimer) {
+        m_snapshotTimer->start();
+    }
+    requestSnapshotAsync(QStringLiteral("full"));
 }
 
 void MainWindow::onEngineStopped() {
     m_logPanel->logInfo("Engine stopped");
+    if (m_snapshotTimer) {
+        m_snapshotTimer->stop();
+    }
     updateUIState();
     updateStatusBar();
 }
@@ -294,11 +314,17 @@ void MainWindow::onEngineStepped(int currentStep, int totalSteps) {
 void MainWindow::onEngineError(const QString& error) {
     m_logPanel->logError(QString("Engine error: %1").arg(error));
     QMessageBox::critical(this, "Engine Error", error);
+    if (m_snapshotTimer) {
+        m_snapshotTimer->stop();
+    }
     updateUIState();
     updateStatusBar();
 }
 
 void MainWindow::onEngineStateChanged(EngineState state) {
+    if (state != EngineState::Running && m_snapshotTimer) {
+        m_snapshotTimer->stop();
+    }
     updateUIState();
     updateStatusBar();
     
@@ -630,4 +656,16 @@ void MainWindow::saveSettings() {
     
     // Last config file
     settings.setValue("lastConfigFile", m_currentConfigFile);
+}
+
+void MainWindow::requestSnapshotAsync(const QString& kind) {
+    if (!m_engineClient) {
+        return;
+    }
+    
+    QMetaObject::invokeMethod(m_engineClient, [this, kind]() {
+        if (m_engineClient->isRunning()) {
+            m_engineClient->requestSnapshot(kind);
+        }
+    }, Qt::QueuedConnection);
 }

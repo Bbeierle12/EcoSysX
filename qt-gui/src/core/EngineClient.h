@@ -28,8 +28,8 @@ enum class EngineState {
  * 
  * Protocol:
  * - Line-delimited JSON over stdio
- * - Request: {"op": "init|step|snapshot|stop", "params": {...}}
- * - Response: {"status": "ok|error", "data": {...}, "error": "..."}
+ * - Request: {"op": "init|step|snapshot|stop|ping", "data": {...}}
+ * - Response: {"success": true|false, "op": "...", "data": {...}, "error": "..."}
  * 
  * Threading:
  * - Should be moved to a QThread worker
@@ -204,40 +204,54 @@ private slots:
     void onProcessError(QProcess::ProcessError error);
     
     /**
-     * @brief Handle incoming data from sidecar
+     * @brief Handle incoming data from sidecar stdout
      */
-    void onReadyRead();
+    void onReadyReadStdOut();
+    
+    /**
+     * @brief Handle diagnostic output from sidecar stderr
+     */
+    void onReadyReadStdErr();
     
     /**
      * @brief Handle startup timeout
      */
     void onStartupTimeout();
 
-private:
+protected:
     /**
      * @brief Send a JSON-RPC message to the sidecar
      * @param message JSON object to send
+     *
+     * Protected for unit testing/mocking.
      */
-    void sendMessage(const QJsonObject& message);
+    virtual void sendMessage(const QJsonObject& message);
     
     /**
      * @brief Process a complete JSON line from sidecar
      * @param line JSON string
+     *
+     * Protected for unit testing.
      */
     void processLine(const QString& line);
     
     /**
      * @brief Parse and handle a JSON response
      * @param json Response JSON object
+     *
+     * Protected for unit testing.
      */
     void handleResponse(const QJsonObject& json);
     
     /**
      * @brief Change engine state and emit signal
      * @param newState New state
+     *
+     * Protected so tests can simulate state transitions.
      */
     void setState(EngineState newState);
     
+private:
     /**
      * @brief Format error message from process error
      * @param error Process error
@@ -253,6 +267,7 @@ private:
     QString m_lineBuffer;             ///< Buffer for incomplete lines
     int m_currentTick;                ///< Current simulation tick
     QTimer* m_startupTimer;           ///< Startup timeout timer
+    QString m_defaultProvider = QStringLiteral("mesa"); ///< Default engine provider
     
     static constexpr int STARTUP_TIMEOUT_MS = 5000;  ///< 5 second startup timeout
 };
