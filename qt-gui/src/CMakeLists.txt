@@ -25,8 +25,24 @@ set(HEADERS
     ui/widgets/MetricsChartWidget.h
 )
 
+# Resources
+set(RESOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../resources/resources.qrc
+)
+
+# Windows icon resource
+if(WIN32)
+    set(APP_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icons/app.ico")
+    if(EXISTS "${APP_ICON_PATH}")
+        set(APP_ICON_RC ${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc)
+        file(TO_NATIVE_PATH "${APP_ICON_PATH}" APP_ICON_PATH_NATIVE)
+        file(WRITE ${APP_ICON_RC} "IDI_ICON1 ICON \"${APP_ICON_PATH_NATIVE}\"\n")
+        set(RESOURCES ${RESOURCES} ${APP_ICON_RC})
+    endif()
+endif()
+
 # Create executable
-add_executable(ecosysx-gui ${SOURCES} ${HEADERS})
+add_executable(ecosysx-gui ${SOURCES} ${HEADERS} ${RESOURCES})
 
 # Link Qt libraries
 target_link_libraries(ecosysx-gui PRIVATE

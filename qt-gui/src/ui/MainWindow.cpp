@@ -28,6 +28,7 @@ MainWindow::MainWindow(QWidget* parent)
     , m_currentStep(0)
 {
     setWindowTitle("EcoSysX - Qt GUI");
+    setWindowIcon(QIcon(":/icons/icons/app.svg"));
     resize(1200, 800);
     
     // Create UI components

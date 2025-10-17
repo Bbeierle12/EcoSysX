@@ -9,6 +9,9 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion("0.1.0");
     app.setOrganizationName("EcoSysX");
     
+    // Set application icon
+    app.setWindowIcon(QIcon(":/icons/icons/app.svg"));
+    
     // Create and show main window
     MainWindow window;
     window.show();
