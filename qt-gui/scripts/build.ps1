@@ -1,58 +1,72 @@
 # EcoSysX Qt GUI - Build Script for Windows PowerShell
+# Now using CMake Presets for consistent configuration
 
 param(
-    [string]$BuildType = "Debug",
-    [switch]$Clean
+    [ValidateSet("dev", "dev-mingw", "dev-vs", "ci", "ci-mingw", "release")]
+    [string]$Preset = "dev-mingw",
+    [switch]$Clean,
+    [switch]$Test
 )
 
-Write-Host "=== EcoSysX Qt GUI Build Script ===" -ForegroundColor Green
+Write-Host "=== EcoSysX Qt GUI Build Script (CMake Presets) ===" -ForegroundColor Green
 
 # Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
-$BuildDir = Join-Path $ProjectDir "build"
 
 Write-Host "Project Directory: $ProjectDir"
-Write-Host "Build Type: $BuildType"
-Write-Host "Build Directory: $BuildDir"
+Write-Host "Preset: $Preset"
+
+Set-Location $ProjectDir
 
 # Clean build if requested
 if ($Clean) {
     Write-Host "Cleaning build directory..." -ForegroundColor Yellow
-    if (Test-Path $BuildDir) {
-        Remove-Item -Recurse -Force $BuildDir
+    cmake --build --preset $Preset --target clean 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Clean command not available, removing build directory..." -ForegroundColor Yellow
+        $BuildDir = (cmake --preset $Preset --list-presets 2>&1 | Select-String "binaryDir").ToString().Split(":")[-1].Trim()
+        if (Test-Path $BuildDir) {
+            Remove-Item -Recurse -Force $BuildDir
+        }
     }
 }
 
-# Create build directory
-if (-not (Test-Path $BuildDir)) {
-    New-Item -ItemType Directory -Path $BuildDir | Out-Null
-}
-
-Set-Location $BuildDir
-
-# Configure with CMake
-Write-Host "Configuring with CMake..." -ForegroundColor Green
-cmake .. -G "Visual Studio 17 2022" -A x64
+# Configure with CMake preset
+Write-Host "Configuring with preset '$Preset'..." -ForegroundColor Green
+cmake --preset $Preset
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake configuration failed!" -ForegroundColor Red
     exit 1
 }
 
-# Build
+# Build with CMake preset
 Write-Host "Building..." -ForegroundColor Green
-cmake --build . --config $BuildType
+cmake --build --preset $Preset
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build failed!" -ForegroundColor Red
     exit 1
 }
 
+# Run tests if requested
+if ($Test) {
+    Write-Host "Running tests..." -ForegroundColor Green
+    ctest --preset $Preset
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Tests failed!" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # Success message
 Write-Host "=== Build Complete ===" -ForegroundColor Green
-Write-Host "Executable: " -NoNewline
-Write-Host "$BuildDir\bin\$BuildType\ecosysx-gui.exe" -ForegroundColor Green
 Write-Host ""
-Write-Host "To run: cd $BuildDir; .\bin\$BuildType\ecosysx-gui.exe"
-Write-Host "To test: cd $BuildDir; ctest -C $BuildType --output-on-failure"
+Write-Host "Usage:" -ForegroundColor Cyan
+Write-Host "  Run application: cmake --build --preset $Preset --target run"
+Write-Host "  Run tests:       ctest --preset $Preset"
+Write-Host "  Clean build:     .\build.ps1 -Preset $Preset -Clean"
+Write-Host ""
+Write-Host "Available presets: dev-mingw, dev-vs, ci-mingw, release" -ForegroundColor Yellow

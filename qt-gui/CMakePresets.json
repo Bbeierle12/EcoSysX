@@ -1,0 +1,221 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development Build",
+      "description": "Debug build with tests enabled and verbose output for local development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_VERBOSE_MAKEFILE": "ON",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g -O0 -Wall -Wextra"
+      },
+      "environment": {
+        "CTEST_OUTPUT_ON_FAILURE": "1"
+      }
+    },
+    {
+      "name": "dev-mingw",
+      "displayName": "Development Build (MinGW)",
+      "description": "Debug build with MinGW generator for Windows development",
+      "inherits": "dev",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build-dev-mingw"
+    },
+    {
+      "name": "dev-vs",
+      "displayName": "Development Build (Visual Studio)",
+      "description": "Debug build with Visual Studio generator for Windows",
+      "inherits": "dev",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-dev-vs",
+      "cacheVariables": {
+        "CMAKE_VERBOSE_MAKEFILE": null
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI Build",
+      "description": "Release build optimized for continuous integration",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG"
+      },
+      "environment": {
+        "CTEST_OUTPUT_ON_FAILURE": "1"
+      }
+    },
+    {
+      "name": "ci-unix",
+      "displayName": "CI Build (Unix Makefiles)",
+      "description": "CI build with Unix Makefiles for Linux systems",
+      "inherits": "ci",
+      "generator": "Unix Makefiles"
+    },
+    {
+      "name": "ci-mingw",
+      "displayName": "CI Build (MinGW)",
+      "description": "CI build with MinGW Makefiles for Windows CI",
+      "inherits": "ci",
+      "generator": "MinGW Makefiles"
+    },
+    {
+      "name": "release",
+      "displayName": "Release Build",
+      "description": "Optimized release build without tests for production",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTS": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG -march=native"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "displayName": "Build Development",
+      "configurePreset": "dev",
+      "jobs": 4,
+      "verbose": true
+    },
+    {
+      "name": "dev-mingw",
+      "displayName": "Build Development (MinGW)",
+      "configurePreset": "dev-mingw",
+      "jobs": 4,
+      "verbose": true
+    },
+    {
+      "name": "dev-vs",
+      "displayName": "Build Development (Visual Studio)",
+      "configurePreset": "dev-vs",
+      "configuration": "Debug",
+      "jobs": 4,
+      "verbose": true
+    },
+    {
+      "name": "ci",
+      "displayName": "Build CI",
+      "configurePreset": "ci",
+      "jobs": 0,
+      "verbose": false
+    },
+    {
+      "name": "ci-unix",
+      "displayName": "Build CI (Unix)",
+      "configurePreset": "ci-unix",
+      "jobs": 0,
+      "verbose": false
+    },
+    {
+      "name": "ci-mingw",
+      "displayName": "Build CI (MinGW)",
+      "configurePreset": "ci-mingw",
+      "jobs": 0,
+      "verbose": false
+    },
+    {
+      "name": "release",
+      "displayName": "Build Release",
+      "configurePreset": "release",
+      "jobs": 0,
+      "verbose": false
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "displayName": "Test Development",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "dev-mingw",
+      "displayName": "Test Development (MinGW)",
+      "configurePreset": "dev-mingw",
+      "inherits": "dev"
+    },
+    {
+      "name": "dev-vs",
+      "displayName": "Test Development (Visual Studio)",
+      "configurePreset": "dev-vs",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "Test CI",
+      "configurePreset": "ci",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "ci-unix",
+      "displayName": "Test CI (Unix)",
+      "configurePreset": "ci-unix",
+      "inherits": "ci"
+    },
+    {
+      "name": "ci-mingw",
+      "displayName": "Test CI (MinGW)",
+      "configurePreset": "ci-mingw",
+      "inherits": "ci"
+    }
+  ],
+  "vendor": {
+    "ecosysx.io/gui": {
+      "presets": {
+        "dev": {
+          "description": "Use for local development with Ninja or MinGW",
+          "usage": "cmake --preset dev && cmake --build --preset dev && ctest --preset dev"
+        },
+        "ci": {
+          "description": "Use in CI/CD pipelines",
+          "usage": "cmake --preset ci && cmake --build --preset ci && ctest --preset ci"
+        },
+        "release": {
+          "description": "Use for production builds",
+          "usage": "cmake --preset release && cmake --build --preset release"
+        }
+      }
+    }
+  }
+}

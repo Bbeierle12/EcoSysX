@@ -58,15 +58,15 @@ private slots:
         QVERIFY(configPanel != nullptr);
         
         Configuration config;
-        config.simulation.stepsPerTick = 50;
-        config.agents.initialCount = 500;
+        config.simulation.maxSteps = 50000;
+        config.agents.initialPopulation = 500;
         
         QSignalSpy dirtyStateSpy(configPanel, &ConfigPanel::dirtyStateChanged);
         
         configPanel->setConfiguration(config);
         
-        QCOMPARE(configPanel->configuration().simulation.stepsPerTick, 50);
-        QCOMPARE(configPanel->configuration().agents.initialCount, 500);
+        QCOMPARE(configPanel->configuration().simulation.maxSteps, 50000);
+        QCOMPARE(configPanel->configuration().agents.initialPopulation, 500);
         
         // Initially not dirty after setConfiguration
         QVERIFY(!configPanel->isDirty());
@@ -137,7 +137,7 @@ private slots:
         
         // Modify configuration
         Configuration newConfig;
-        newConfig.simulation.stepsPerTick = 75;
+        newConfig.simulation.maxSteps = 75000;
         configPanel->setConfiguration(newConfig);
         
         // Apply configuration
@@ -202,7 +202,7 @@ private slots:
         
         // Set invalid configuration
         Configuration invalidConfig;
-        invalidConfig.simulation.stepsPerTick = -1;  // Invalid
+        invalidConfig.simulation.maxSteps = -1;  // Invalid
         configPanel->setConfiguration(invalidConfig);
         
         QStringList errors;
@@ -221,16 +221,16 @@ private slots:
         
         // Set custom configuration
         Configuration customConfig;
-        customConfig.simulation.stepsPerTick = 99;
+        customConfig.simulation.maxSteps = 99999;
         configPanel->setConfiguration(customConfig);
         
-        QCOMPARE(configPanel->configuration().simulation.stepsPerTick, 99);
+        QCOMPARE(configPanel->configuration().simulation.maxSteps, 99999);
         
         // Reset to defaults
         configPanel->reset();
         
-        // Should return to default value (1)
-        QCOMPARE(configPanel->configuration().simulation.stepsPerTick, 1);
+        // Should return to default value (10000)
+        QCOMPARE(configPanel->configuration().simulation.maxSteps, 10000);
     }
     
     /**

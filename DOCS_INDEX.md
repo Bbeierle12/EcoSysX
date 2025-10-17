@@ -8,6 +8,7 @@ Welcome to the EcoSysX documentation! This index provides links to all documenta
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute to the project
 - **[LICENSE](LICENSE)** - MIT License terms
 - **[AGENTS.md](AGENTS.md)** - Coding conventions for AI agents and contributors
+- **[SCRIPTS.md](SCRIPTS.md)** - Comprehensive script reference and automation guide
 
 ## 🏗️ Project Status & History
 

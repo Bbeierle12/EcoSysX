@@ -50,23 +50,42 @@ private slots:
     }
     
     /**
-     * Test validateRange with valid values
+     * Test validateRange with valid ranges (min <= max)
      */
     void testValidateRangeSuccess() {
-        QVERIFY(ValidationUtils::validateRange(5, 0, 10, "value"));
-        QVERIFY(ValidationUtils::validateRange(0, 0, 10, "value"));
-        QVERIFY(ValidationUtils::validateRange(10, 0, 10, "value"));
-        QVERIFY(ValidationUtils::validateRange(0.5, 0.0, 1.0, "value"));
+        QVERIFY(ValidationUtils::validateRange(0, 10, "value"));
+        QVERIFY(ValidationUtils::validateRange(5, 5, "value"));
+        QVERIFY(ValidationUtils::validateRange(0.0, 1.0, "value"));
+        QVERIFY(ValidationUtils::validateRange(-10, 10, "value"));
     }
     
     /**
-     * Test validateRange with invalid values
+     * Test validateRange with invalid ranges (min > max)
      */
     void testValidateRangeFailure() {
-        QVERIFY(!ValidationUtils::validateRange(-1, 0, 10, "value"));
-        QVERIFY(!ValidationUtils::validateRange(11, 0, 10, "value"));
-        QVERIFY(!ValidationUtils::validateRange(1.5, 0.0, 1.0, "value"));
-        QVERIFY(!ValidationUtils::validateRange(-0.5, 0.0, 1.0, "value"));
+        QVERIFY(!ValidationUtils::validateRange(10, 0, "value"));
+        QVERIFY(!ValidationUtils::validateRange(1.0, 0.0, "value"));
+        QVERIFY(!ValidationUtils::validateRange(100, -100, "value"));
+    }
+    
+    /**
+     * Test validateWithinRange with valid values
+     */
+    void testValidateWithinRangeSuccess() {
+        QVERIFY(ValidationUtils::validateWithinRange(5, 0, 10, "value"));
+        QVERIFY(ValidationUtils::validateWithinRange(0, 0, 10, "value"));
+        QVERIFY(ValidationUtils::validateWithinRange(10, 0, 10, "value"));
+        QVERIFY(ValidationUtils::validateWithinRange(0.5, 0.0, 1.0, "value"));
+    }
+    
+    /**
+     * Test validateWithinRange with invalid values
+     */
+    void testValidateWithinRangeFailure() {
+        QVERIFY(!ValidationUtils::validateWithinRange(-1, 0, 10, "value"));
+        QVERIFY(!ValidationUtils::validateWithinRange(11, 0, 10, "value"));
+        QVERIFY(!ValidationUtils::validateWithinRange(1.5, 0.0, 1.0, "value"));
+        QVERIFY(!ValidationUtils::validateWithinRange(-0.5, 0.0, 1.0, "value"));
     }
     
     /**

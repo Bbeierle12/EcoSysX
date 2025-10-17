@@ -67,25 +67,48 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev
       
-      # Configure CMake with tests enabled
-      - name: Configure CMake
+      # Configure CMake with presets
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
         working-directory: qt-gui
         run: |
-          cmake -B build -G "${{ matrix.cmake_generator }}" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+          cmake --preset ci-unix
       
-      # Build the application
-      - name: Build application
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
         working-directory: qt-gui
         run: |
-          cmake --build build --config Release --parallel
+          cmake --preset ci-mingw
       
-      # Run tests with CTest
-      - name: Run tests
-        working-directory: qt-gui/build
+      # Build the application with presets
+      - name: Build application (Linux)
+        if: runner.os == 'Linux'
+        working-directory: qt-gui
         run: |
-          ctest --output-on-failure -C Release
-        continue-on-error: true
-        id: test-run
+          cmake --build --preset ci-unix
+      
+      - name: Build application (Windows)
+        if: runner.os == 'Windows'
+        working-directory: qt-gui
+        run: |
+          cmake --build --preset ci-mingw
+      
+      # Run tests with CTest using presets
+      - name: Run tests (Linux)
+        if: runner.os == 'Linux'
+        working-directory: qt-gui
+        run: |
+          ctest --preset ci-unix
+        continue-on-error: false
+        id: test-run-linux
+      
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: qt-gui
+        run: |
+          ctest --preset ci-mingw
+        continue-on-error: false
+        id: test-run-windows
       
       # Upload build artifacts (binaries)
       - name: Upload build artifacts
@@ -121,10 +144,11 @@ jobs:
           echo "- **Architecture**: ${{ matrix.qt_arch }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Generator**: ${{ matrix.cmake_generator }}" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.test-run.outcome }}" == "success" ]; then
+          TEST_OUTCOME="${{ steps.test-run-linux.outcome || steps.test-run-windows.outcome }}"
+          if [ "$TEST_OUTCOME" == "success" ]; then
             echo "- **Test Status**: ✅ All tests passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.test-run.outcome }}" == "failure" ]; then
-            echo "- **Test Status**: ⚠️ Some tests failed (allowed for TODO tests)" >> $GITHUB_STEP_SUMMARY
+          elif [ "$TEST_OUTCOME" == "failure" ]; then
+            echo "- **Test Status**: ❌ Tests failed" >> $GITHUB_STEP_SUMMARY
           else
             echo "- **Test Status**: ⏭️ Tests skipped" >> $GITHUB_STEP_SUMMARY
           fi
@@ -133,6 +157,9 @@ jobs:
           echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "Artifacts uploaded: qt-gui-build-${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note**: Tests are currently set to continue-on-error due to TODO items." >> $GITHUB_STEP_SUMMARY
-          echo "> After Milestone 5, test failures will block the build." >> $GITHUB_STEP_SUMMARY
+          echo "### CMake Presets" >> $GITHUB_STEP_SUMMARY
+          echo "- **Linux**: ci-unix" >> $GITHUB_STEP_SUMMARY
+          echo "- **Windows**: ci-mingw" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note**: All tests are now enabled. Test failures will block the build." >> $GITHUB_STEP_SUMMARY
 
