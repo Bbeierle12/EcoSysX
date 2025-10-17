@@ -35,27 +35,43 @@ EngineClient::EngineClient(QObject* parent)
     connect(m_startupTimer, &QTimer::timeout,
             this, &EngineClient::onStartupTimeout);
     
-    // Try to find sidecar script in parent directory
-    // Assuming qt-gui is sibling to engine-sidecar or services
+    // Try to find sidecar script in project directory
+    // When running from qt-gui/build/bin, we need to navigate to project root
     QDir projectDir = QDir::current();
-    projectDir.cdUp();  // Go up from build or qt-gui
     
-    // Try multiple possible locations
-    QStringList possiblePaths = {
-        projectDir.filePath("engine-sidecar/engine_sidecar.js"),
-        projectDir.filePath("services/engine-sidecar/main.js"),
-        projectDir.filePath("sidecar/engine_sidecar.js")
-    };
+    // Navigate up to project root from various possible locations:
+    // - qt-gui/build/bin -> up 3 levels
+    // - qt-gui/build -> up 2 levels  
+    // - qt-gui -> up 1 level
+    // We'll try multiple levels to be robust
+    QStringList possiblePaths;
+    
+    for (int levelsUp = 0; levelsUp <= 4; ++levelsUp) {
+        QDir testDir = QDir::current();
+        for (int i = 0; i < levelsUp; ++i) {
+            testDir.cdUp();
+        }
+        
+        // Try engine-sidecar and services/engine-sidecar in this directory
+        possiblePaths << testDir.filePath("services/engine-sidecar/main.js");
+        possiblePaths << testDir.filePath("engine-sidecar/main.js");
+        possiblePaths << testDir.filePath("services/engine-sidecar/engine_sidecar.js");
+    }
     
     for (const QString& path : possiblePaths) {
         if (QFile::exists(path)) {
             m_sidecarScript = path;
+            qDebug() << "Found sidecar script:" << path;
             break;
         }
     }
     
     if (m_sidecarScript.isEmpty()) {
-        qWarning() << "Sidecar script not found. Set path with setSidecarScript()";
+        qWarning() << "Sidecar script not found. Searched paths:";
+        for (const QString& path : possiblePaths) {
+            qWarning() << "  -" << path;
+        }
+        qWarning() << "Use setSidecarScript() to set path manually.";
     }
 }
 
@@ -287,13 +303,22 @@ void EngineClient::onStartupTimeout() {
 }
 
 void EngineClient::sendMessage(const QJsonObject& message) {
+    // Check if process is running and ready
+    if (!m_process || m_process->state() != QProcess::Running) {
+        emit errorOccurred("Cannot send message: engine process not running");
+        return;
+    }
+    
     QJsonDocument doc(message);
     QByteArray json = doc.toJson(QJsonDocument::Compact);
     json.append('\n');
     
     qint64 written = m_process->write(json);
+    m_process->waitForBytesWritten(1000);  // Wait up to 1 second for write
+    
     if (written != json.size()) {
-        emit errorOccurred("Failed to write complete message to engine");
+        emit errorOccurred(QString("Failed to write complete message to engine (wrote %1 of %2 bytes)")
+                          .arg(written).arg(json.size()));
     }
 }
 

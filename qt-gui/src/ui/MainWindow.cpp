@@ -85,10 +85,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_startAction, &QAction::triggered, [this]() {
         QMetaObject::invokeMethod(m_engineClient, [this]() {
             m_engineClient->start();
-            // Send init after start
-            if (m_currentConfig.validate()) {
-                m_engineClient->sendInit(m_currentConfig.toJson());
-            }
+            // Init will be sent when engine emits started() signal
         });
     });
     
@@ -107,9 +104,7 @@ MainWindow::MainWindow(QWidget* parent)
             m_engineClient->sendStop();
             m_engineClient->stop();
             m_engineClient->start();
-            if (m_currentConfig.validate()) {
-                m_engineClient->sendInit(m_currentConfig.toJson());
-            }
+            // Init will be sent when engine emits started() signal
         });
     });
     
@@ -285,6 +280,17 @@ void MainWindow::onReset() {
 
 void MainWindow::onEngineStarted() {
     m_logPanel->logInfo("Engine started successfully");
+    
+    // Now that engine is running, send initialization
+    if (m_currentConfig.validate()) {
+        m_logPanel->logInfo("Sending initialization to engine...");
+        QMetaObject::invokeMethod(m_engineClient, [this]() {
+            m_engineClient->sendInit(m_currentConfig.toJson());
+        });
+    } else {
+        m_logPanel->logWarning("Configuration invalid, cannot initialize engine");
+    }
+    
     updateUIState();
     updateStatusBar();
     if (m_snapshotTimer) {
