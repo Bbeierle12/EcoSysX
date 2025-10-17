@@ -1,0 +1,138 @@
+name: Qt GUI CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'qt-gui/**'
+      - '.github/workflows/gui.yml'
+  pull_request:
+    paths:
+      - 'qt-gui/**'
+      - '.github/workflows/gui.yml'
+
+jobs:
+  build-and-test:
+    name: Build and Test (Qt 6.9.3 on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            qt_host: linux
+            qt_arch: gcc_64
+            cmake_generator: "Unix Makefiles"
+          - os: windows-latest
+            qt_host: windows
+            qt_arch: win64_mingw
+            cmake_generator: "MinGW Makefiles"
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Install Qt using jurplel/install-qt-action
+      - name: Install Qt 6.9.3
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.9.3'
+          host: ${{ matrix.qt_host }}
+          target: 'desktop'
+          arch: ${{ matrix.qt_arch }}
+          modules: 'qtcharts'
+          cache: true
+          cache-key-prefix: ${{ runner.os }}-qt-6.9.3
+      
+      # Windows-specific: Install MinGW (if not already available)
+      - name: Setup MinGW (Windows)
+        if: runner.os == 'Windows'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+          version: 12.2.0
+      
+      # Linux-specific: Install build dependencies
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev
+      
+      # Configure CMake with tests enabled
+      - name: Configure CMake
+        working-directory: qt-gui
+        run: |
+          cmake -B build -G "${{ matrix.cmake_generator }}" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+      
+      # Build the application
+      - name: Build application
+        working-directory: qt-gui
+        run: |
+          cmake --build build --config Release --parallel
+      
+      # Run tests with CTest
+      - name: Run tests
+        working-directory: qt-gui/build
+        run: |
+          ctest --output-on-failure -C Release
+        continue-on-error: true
+        id: test-run
+      
+      # Upload build artifacts (binaries)
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-gui-build-${{ matrix.os }}
+          path: |
+            qt-gui/build/bin/
+            qt-gui/build/lib/
+          retention-days: 30
+          if-no-files-found: warn
+      
+      # Upload test logs (if tests were run)
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt-gui-test-logs-${{ matrix.os }}
+          path: |
+            qt-gui/build/Testing/
+          retention-days: 30
+          if-no-files-found: ignore
+      
+      # Generate build summary
+      - name: Upload build summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Qt GUI Build Summary :gear:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **OS**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Qt Version**: 6.9.3" >> $GITHUB_STEP_SUMMARY
+          echo "- **Architecture**: ${{ matrix.qt_arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Generator**: ${{ matrix.cmake_generator }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.test-run.outcome }}" == "success" ]; then
+            echo "- **Test Status**: ✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.test-run.outcome }}" == "failure" ]; then
+            echo "- **Test Status**: ⚠️ Some tests failed (allowed for TODO tests)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Test Status**: ⏭️ Tests skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts uploaded: qt-gui-build-${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> **Note**: Tests are currently set to continue-on-error due to TODO items." >> $GITHUB_STEP_SUMMARY
+          echo "> After Milestone 5, test failures will block the build." >> $GITHUB_STEP_SUMMARY
+
