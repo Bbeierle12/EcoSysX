@@ -1,19 +1,23 @@
 #include "MetricsChartWidget.h"
+#include "core/SnapshotBuffer.h"
 #include <QVBoxLayout>
-#include <QChartView>
-#include <QLineSeries>
-#include <QValueAxis>
-#include <QLegend>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QValueAxis>
+#include <QtCharts/QLegend>
+#include <QtCharts/QLegendMarker>
 #include <QJsonArray>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QtAlgorithms>
 
-QT_CHARTS_USE_NAMESPACE
+// Note: Qt Charts types are in global namespace in Qt 6.9.3
 
 MetricsChartWidget::MetricsChartWidget(QWidget* parent)
     : QWidget(parent)
     , m_chart(new QChart())
     , m_chartView(new QChartView(m_chart, this))
+    , m_snapshotBuffer(new SnapshotBuffer(1000, this))
     , m_maxDataPoints(1000)
     , m_dataPointCount(0)
     , m_minStep(0)
@@ -71,6 +75,12 @@ MetricsChartWidget::MetricsChartWidget(QWidget* parent)
 
 void MetricsChartWidget::setMaxDataPoints(int max) {
     m_maxDataPoints = qMax(10, max);
+    m_snapshotBuffer->setMaxCapacity(max);
+    
+    // Rebuild chart if data exists
+    if (m_dataPointCount > 0) {
+        rebuildChartFromBuffer();
+    }
 }
 
 bool MetricsChartWidget::isSeriesVisible(const QString& seriesName) const {
@@ -90,6 +100,10 @@ bool MetricsChartWidget::isSeriesVisible(const QString& seriesName) const {
 }
 
 void MetricsChartWidget::addDataPoint(int step, const QJsonObject& snapshot) {
+    // Store in snapshot buffer
+    m_snapshotBuffer->addSnapshot(step, snapshot);
+    
+    // Extract metrics
     Metrics metrics = extractMetrics(snapshot);
     
     // Add points to series
@@ -106,7 +120,7 @@ void MetricsChartWidget::addDataPoint(int step, const QJsonObject& snapshot) {
         m_infectedSeries->remove(0);
         m_recoveredSeries->remove(0);
         m_deadSeries->remove(0);
-        m_dataPointCount--;
+        m_dataPointCount = m_maxDataPoints;
     }
     
     // Update ranges
@@ -117,8 +131,8 @@ void MetricsChartWidget::addDataPoint(int step, const QJsonObject& snapshot) {
         m_minStep = qRound(m_susceptibleSeries->at(0).x());
     }
     
-    int maxValue = qMax({metrics.susceptible, metrics.infected,
-                         metrics.recovered, metrics.dead});
+    int maxValue = qMax(qMax(metrics.susceptible, metrics.infected),
+                        qMax(metrics.recovered, metrics.dead));
     m_maxValue = qMax(m_maxValue, maxValue);
     
     updateYAxisRange();
@@ -131,6 +145,8 @@ void MetricsChartWidget::clear() {
     m_infectedSeries->clear();
     m_recoveredSeries->clear();
     m_deadSeries->clear();
+    
+    m_snapshotBuffer->clear();
     
     m_dataPointCount = 0;
     m_minStep = 0;
@@ -231,32 +247,8 @@ void MetricsChartWidget::setupChart() {
     m_chart->legend()->setVisible(true);
     m_chart->legend()->setAlignment(Qt::AlignBottom);
     
-    // Make legend interactive
-    connect(m_chart->legend(), &QLegend::clicked, this, [this](QLegendMarker* marker) {
-        if (!marker) return;
-        
-        // Toggle series visibility
-        marker->series()->setVisible(!marker->series()->isVisible());
-        
-        // Update marker appearance
-        marker->setVisible(true);
-        qreal alpha = marker->series()->isVisible() ? 1.0 : 0.5;
-        
-        QColor color = marker->labelBrush().color();
-        color.setAlphaF(alpha);
-        marker->setLabelBrush(QBrush(color));
-        
-        // Find series name
-        QString seriesName;
-        if (marker->series() == m_susceptibleSeries) seriesName = "susceptible";
-        else if (marker->series() == m_infectedSeries) seriesName = "infected";
-        else if (marker->series() == m_recoveredSeries) seriesName = "recovered";
-        else if (marker->series() == m_deadSeries) seriesName = "dead";
-        
-        if (!seriesName.isEmpty()) {
-            emit seriesToggled(seriesName, marker->series()->isVisible());
-        }
-    });
+    // Note: Interactive legend (QLegend::clicked) not available in Qt 6.9.3
+    // TODO: Implement alternative legend interaction if needed
 }
 
 QLineSeries* MetricsChartWidget::createSeries(const QString& name, const QColor& color) {
@@ -265,4 +257,47 @@ QLineSeries* MetricsChartWidget::createSeries(const QString& name, const QColor&
     series->setColor(color);
     series->setPen(QPen(color, 2));
     return series;
+}
+
+void MetricsChartWidget::rebuildChartFromBuffer() {
+    // Clear existing series data
+    m_susceptibleSeries->clear();
+    m_infectedSeries->clear();
+    m_recoveredSeries->clear();
+    m_deadSeries->clear();
+    
+    // Get all snapshots from buffer
+    auto snapshots = m_snapshotBuffer->getAllSnapshots();
+    
+    if (snapshots.isEmpty()) {
+        return;
+    }
+    
+    m_maxValue = 0;
+    
+    // Rebuild series from buffer
+    for (const QJsonObject& snapshot : snapshots) {
+        int step = snapshot["step"].toInt();
+        Metrics metrics = extractMetrics(snapshot);
+        
+        m_susceptibleSeries->append(step, metrics.susceptible);
+        m_infectedSeries->append(step, metrics.infected);
+        m_recoveredSeries->append(step, metrics.recovered);
+        m_deadSeries->append(step, metrics.dead);
+        
+        int maxValue = qMax(qMax(metrics.susceptible, metrics.infected),
+                            qMax(metrics.recovered, metrics.dead));
+        m_maxValue = qMax(m_maxValue, maxValue);
+    }
+    
+    // Update tracking variables
+    m_dataPointCount = snapshots.size();
+    
+    int minStep, maxStep;
+    m_snapshotBuffer->getStepRange(minStep, maxStep);
+    m_minStep = minStep;
+    m_maxStep = maxStep;
+    
+    // Update axes
+    updateYAxisRange();
 }

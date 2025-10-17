@@ -51,7 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_engineClient, &EngineClient::stopped,
             this, &MainWindow::onEngineStopped, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::stepped,
-            this, &MainWindow::onEngineStepped, Qt::QueuedConnection);
+            this, [this](int tick) { onEngineStepped(tick, 0); }, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::errorOccurred,
             this, &MainWindow::onEngineError, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::stateChanged,
@@ -70,7 +70,11 @@ MainWindow::MainWindow(QWidget* parent)
     // Connect engine control methods via QMetaObject (thread-safe)
     connect(m_startAction, &QAction::triggered, [this]() {
         QMetaObject::invokeMethod(m_engineClient, [this]() {
-            m_engineClient->start(m_currentConfig);
+            m_engineClient->start();
+            // Send init after start
+            if (m_currentConfig.validate()) {
+                m_engineClient->sendInit(m_currentConfig.toJson());
+            }
         });
     });
     
@@ -79,11 +83,20 @@ MainWindow::MainWindow(QWidget* parent)
     });
     
     connect(m_stepAction, &QAction::triggered, [this]() {
-        QMetaObject::invokeMethod(m_engineClient, &EngineClient::step);
+        QMetaObject::invokeMethod(m_engineClient, [this]() {
+            m_engineClient->sendStep(1);
+        });
     });
     
     connect(m_resetAction, &QAction::triggered, [this]() {
-        QMetaObject::invokeMethod(m_engineClient, &EngineClient::reset);
+        QMetaObject::invokeMethod(m_engineClient, [this]() {
+            m_engineClient->sendStop();
+            m_engineClient->stop();
+            m_engineClient->start();
+            if (m_currentConfig.validate()) {
+                m_engineClient->sendInit(m_currentConfig.toJson());
+            }
+        });
     });
     
     // Start engine thread
@@ -168,7 +181,11 @@ void MainWindow::onToggleConfigPanel() {
 }
 
 void MainWindow::onToggleLogPanel() {
-    m_logDock->setVisible(!m_logDock->isVisible());
+    m_bottomDock->setVisible(!m_bottomDock->isVisible());
+    // Switch to log tab if showing
+    if (m_bottomDock->isVisible()) {
+        m_bottomTabs->setCurrentWidget(m_logPanel);
+    }
 }
 
 void MainWindow::onToggleMetricsPanel() {
@@ -281,28 +298,31 @@ void MainWindow::onEngineError(const QString& error) {
     updateStatusBar();
 }
 
-void MainWindow::onEngineStateChanged(EngineClient::State state) {
+void MainWindow::onEngineStateChanged(EngineState state) {
     updateUIState();
     updateStatusBar();
     
     QString stateStr;
     switch (state) {
-        case EngineClient::State::Idle:
+        case EngineState::Idle:
             stateStr = "idle";
             break;
-        case EngineClient::State::Starting:
+        case EngineState::Starting:
             stateStr = "starting";
             break;
-        case EngineClient::State::Running:
+        case EngineState::Running:
             stateStr = "running";
             break;
-        case EngineClient::State::Stopping:
+        case EngineState::Stepping:
+            stateStr = "stepping";
+            break;
+        case EngineState::Stopping:
             stateStr = "stopping";
             break;
-        case EngineClient::State::Stopped:
+        case EngineState::Stopped:
             stateStr = "stopped";
             break;
-        case EngineClient::State::Error:
+        case EngineState::Error:
             stateStr = "error";
             break;
     }
@@ -532,14 +552,14 @@ void MainWindow::createStatusBar() {
 }
 
 void MainWindow::updateUIState() {
-    EngineClient::State state = m_engineClient->state();
+    EngineState state = m_engineClient->state();
     
     // Enable/disable actions based on state
-    bool isIdle = (state == EngineClient::State::Idle || 
-                   state == EngineClient::State::Stopped);
-    bool isRunning = (state == EngineClient::State::Running);
-    bool canStop = (state == EngineClient::State::Running || 
-                    state == EngineClient::State::Starting);
+    bool isIdle = (state == EngineState::Idle || 
+                   state == EngineState::Stopped);
+    bool isRunning = (state == EngineState::Running);
+    bool canStop = (state == EngineState::Running || 
+                    state == EngineState::Starting);
     
     m_startAction->setEnabled(isIdle);
     m_stopAction->setEnabled(canStop);
@@ -555,19 +575,21 @@ void MainWindow::updateStatusBar() {
     m_stepLabel->setText(QString("Step: %1").arg(m_currentStep));
 }
 
-QString MainWindow::stateToStatusText(EngineClient::State state) const {
+QString MainWindow::stateToStatusText(EngineState state) const {
     switch (state) {
-        case EngineClient::State::Idle:
+        case EngineState::Idle:
             return "Ready";
-        case EngineClient::State::Starting:
+        case EngineState::Starting:
             return "Starting engine...";
-        case EngineClient::State::Running:
+        case EngineState::Running:
             return "Simulation running";
-        case EngineClient::State::Stopping:
+        case EngineState::Stepping:
+            return "Executing step...";
+        case EngineState::Stopping:
             return "Stopping...";
-        case EngineClient::State::Stopped:
+        case EngineState::Stopped:
             return "Stopped";
-        case EngineClient::State::Error:
+        case EngineState::Error:
             return "Error - see log for details";
         default:
             return "Unknown state";

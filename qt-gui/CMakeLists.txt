@@ -18,6 +18,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Network
     Gui
     Charts
+    Test
 )
 
 # Output directories

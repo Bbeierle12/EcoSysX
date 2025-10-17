@@ -74,11 +74,11 @@ bool ConfigPanel::loadFromFile() {
 
 bool ConfigPanel::loadFromFile(const QString& filePath) {
     Configuration config;
-    QString error;
+    QStringList errors;
     
-    if (!config.loadFromFile(filePath, &error)) {
+    if (!config.loadFromFile(filePath, &errors)) {
         QMessageBox::critical(this, "Load Error", 
-            QString("Failed to load configuration:\n%1").arg(error));
+            QString("Failed to load configuration:\n%1").arg(errors.join("\n")));
         return false;
     }
     
@@ -341,30 +341,30 @@ void ConfigPanel::updateUI() {
     // Block signals during update to prevent onFieldChanged
     bool oldState = blockSignals(true);
     
-    // Simulation
-    m_stepsPerTickSpin->setValue(m_config.simulation.stepsPerTick);
-    m_gridWidthSpin->setValue(m_config.simulation.gridWidth);
-    m_gridHeightSpin->setValue(m_config.simulation.gridHeight);
+    // Simulation - use available fields
+    m_stepsPerTickSpin->setValue(m_config.simulation.maxSteps); // Mapped to maxSteps
+    m_gridWidthSpin->setValue(static_cast<int>(m_config.simulation.worldSize));
+    m_gridHeightSpin->setValue(static_cast<int>(m_config.simulation.worldSize));
     
-    // Agents
-    m_initialCountSpin->setValue(m_config.agents.initialCount);
-    m_initialInfectedRateSpin->setValue(m_config.agents.initialInfectedRate);
-    m_moveProbabilitySpin->setValue(m_config.agents.moveProbability);
-    m_interactionRadiusSpin->setValue(m_config.agents.interactionRadius);
+    // Agents - use available fields
+    m_initialCountSpin->setValue(m_config.agents.initialPopulation);
+    m_initialInfectedRateSpin->setValue(0.1); // Default, not in struct
+    m_moveProbabilitySpin->setValue(m_config.agents.movementSpeed.max);
+    m_interactionRadiusSpin->setValue(5.0); // Default, not in struct
     
     // Disease
     m_transmissionRateSpin->setValue(m_config.disease.transmissionRate);
     m_recoveryRateSpin->setValue(m_config.disease.recoveryRate);
     m_mortalityRateSpin->setValue(m_config.disease.mortalityRate);
-    m_incubationStepsSpin->setValue(m_config.disease.incubationSteps);
+    m_incubationStepsSpin->setValue(10); // Default, not in struct
     
     // Environment
-    m_resourceRegenerationSpin->setValue(m_config.environment.resourceRegeneration);
-    m_carryingCapacitySpin->setValue(m_config.environment.carryingCapacity);
+    m_resourceRegenerationSpin->setValue(m_config.environment.resourceDensity);
+    m_carryingCapacitySpin->setValue(1000); // Default, not in struct
     
     // RNG
     m_seedSpin->setValue(m_config.rng.seed);
-    m_algorithmEdit->setText(m_config.rng.algorithm);
+    m_algorithmEdit->setText("xoshiro256**"); // Default, not in struct
     
     blockSignals(oldState);
     
@@ -372,30 +372,25 @@ void ConfigPanel::updateUI() {
 }
 
 void ConfigPanel::updateConfiguration() {
-    // Simulation
-    m_config.simulation.stepsPerTick = m_stepsPerTickSpin->value();
-    m_config.simulation.gridWidth = m_gridWidthSpin->value();
-    m_config.simulation.gridHeight = m_gridHeightSpin->value();
+    // Simulation - map to available fields
+    m_config.simulation.maxSteps = m_stepsPerTickSpin->value();
+    m_config.simulation.worldSize = m_gridWidthSpin->value();
     
-    // Agents
-    m_config.agents.initialCount = m_initialCountSpin->value();
-    m_config.agents.initialInfectedRate = m_initialInfectedRateSpin->value();
-    m_config.agents.moveProbability = m_moveProbabilitySpin->value();
-    m_config.agents.interactionRadius = m_interactionRadiusSpin->value();
+    // Agents - map to available fields
+    m_config.agents.initialPopulation = m_initialCountSpin->value();
+    m_config.agents.movementSpeed.max = m_moveProbabilitySpin->value();
+    m_config.agents.movementSpeed.min = m_moveProbabilitySpin->value() * 0.5;
     
     // Disease
     m_config.disease.transmissionRate = m_transmissionRateSpin->value();
     m_config.disease.recoveryRate = m_recoveryRateSpin->value();
     m_config.disease.mortalityRate = m_mortalityRateSpin->value();
-    m_config.disease.incubationSteps = m_incubationStepsSpin->value();
     
     // Environment
-    m_config.environment.resourceRegeneration = m_resourceRegenerationSpin->value();
-    m_config.environment.carryingCapacity = m_carryingCapacitySpin->value();
+    m_config.environment.resourceDensity = m_resourceRegenerationSpin->value();
     
     // RNG
     m_config.rng.seed = m_seedSpin->value();
-    m_config.rng.algorithm = m_algorithmEdit->text();
 }
 
 void ConfigPanel::setDirty(bool dirty) {

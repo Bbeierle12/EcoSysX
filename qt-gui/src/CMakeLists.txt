@@ -3,6 +3,7 @@ set(SOURCES
     main.cpp
     core/EngineClient.cpp
     core/Configuration.cpp
+    core/SnapshotBuffer.cpp
     ui/MainWindow.cpp
     ui/panels/ConfigPanel.cpp
     ui/panels/EventLogPanel.cpp
@@ -14,6 +15,7 @@ set(SOURCES
 set(HEADERS
     core/EngineClient.h
     core/Configuration.h
+    core/SnapshotBuffer.h
     utils/ValidationUtils.h
     ui/MainWindow.h
     ui/panels/ConfigPanel.h

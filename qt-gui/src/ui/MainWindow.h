@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include "../core/EngineClient.h"
+#include "../core/Configuration.h"
 
 class QToolBar;
 class QAction;
@@ -65,6 +66,8 @@ private slots:
     // View menu actions
     void onToggleConfigPanel();
     void onToggleLogPanel();
+    void onToggleMetricsPanel();
+    void onToggleBottomDock();
     
     // Help menu actions
     void onAbout();
@@ -85,7 +88,11 @@ private slots:
     void onEngineStopped();
     void onEngineStepped(int currentStep, int totalSteps);
     void onEngineError(const QString& error);
-    void onEngineStateChanged(EngineClient::State state);
+    /**
+     * @brief Handle engine state changes
+     * @param state New engine state
+     */
+    void onEngineStateChanged(EngineState state);
     void onEngineSnapshotReceived(const QJsonObject& snapshot);
     void onEngineLogMessage(const QString& message);
     
@@ -134,7 +141,12 @@ private:
      * @param state Engine state
      * @return Status text
      */
-    QString stateToStatusText(EngineClient::State state) const;
+    /**
+     * @brief Convert state enum to status text
+     * @param state Engine state
+     * @return Status text
+     */
+    QString stateToStatusText(EngineState state) const;
     
     /**
      * @brief Check for unsaved changes

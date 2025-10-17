@@ -3,12 +3,12 @@
 #include <QWidget>
 #include <QJsonObject>
 #include <QChart>
+#include <QChartView>
 #include <QLineSeries>
 #include <QValueAxis>
 
-QT_CHARTS_USE_NAMESPACE
-
-class QChartView;
+// Forward declarations
+class SnapshotBuffer;
 
 /**
  * @brief The MetricsChartWidget displays time-series plots of simulation metrics
@@ -155,6 +155,11 @@ private:
      * @return Created series
      */
     QLineSeries* createSeries(const QString& name, const QColor& color);
+    
+    /**
+     * @brief Rebuild chart from buffer data
+     */
+    void rebuildChartFromBuffer();
 
 private:
     QChart* m_chart;
@@ -169,6 +174,9 @@ private:
     // Axes
     QValueAxis* m_axisX;
     QValueAxis* m_axisY;
+    
+    // Data storage
+    SnapshotBuffer* m_snapshotBuffer;  ///< Ring buffer for snapshot storage
     
     // Configuration
     int m_maxDataPoints;
