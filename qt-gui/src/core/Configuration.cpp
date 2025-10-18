@@ -96,47 +96,74 @@ bool Configuration::validate(QStringList* errors) const {
 QJsonObject Configuration::toJson() const {
     QJsonObject root;
     
-    // Simulation section
+    // Schema version (REQUIRED by engine)
+    root["schema"] = "GENX_CFG_V1";
+    
+    // Simulation section - match EngineConfigV1 interface
     QJsonObject sim;
-    sim["maxSteps"] = simulation.maxSteps;
+    sim["populationSize"] = agents.initialPopulation;  // Map from agents config
     sim["worldSize"] = simulation.worldSize;
+    sim["maxSteps"] = simulation.maxSteps;
+    sim["enableDisease"] = disease.enabled;
+    sim["enableReproduction"] = agents.reproductionEnabled;
+    sim["enableEnvironment"] = true;  // Always enabled
     root["simulation"] = sim;
     
-    // Agents section
+    // Agents section - match EngineConfigV1 interface
     QJsonObject agts;
-    agts["initialPopulation"] = agents.initialPopulation;
+    
+    QJsonObject initialEnergy;
+    initialEnergy["min"] = agents.energyRange.min;
+    initialEnergy["max"] = agents.energyRange.max;
+    agts["initialEnergy"] = initialEnergy;
+    
+    // Energy consumption (use defaults if not in GUI config)
+    QJsonObject energyConsumption;
+    energyConsumption["min"] = 0.5;
+    energyConsumption["max"] = 1.5;
+    agts["energyConsumption"] = energyConsumption;
+    
+    // Reproduction threshold (use reasonable default)
+    agts["reproductionThreshold"] = 150;
+    
+    // Death threshold (agent dies at 0 energy)
+    agts["deathThreshold"] = 0;
     
     QJsonObject moveSpeed;
     moveSpeed["min"] = agents.movementSpeed.min;
     moveSpeed["max"] = agents.movementSpeed.max;
     agts["movementSpeed"] = moveSpeed;
     
-    QJsonObject energy;
-    energy["min"] = agents.energyRange.min;
-    energy["max"] = agents.energyRange.max;
-    agts["energyRange"] = energy;
-    
-    agts["reproductionEnabled"] = agents.reproductionEnabled;
     root["agents"] = agts;
     
-    // Disease section
+    // Disease section - match EngineConfigV1 interface
     QJsonObject dis;
-    dis["enabled"] = disease.enabled;
+    dis["initialInfectionRate"] = 0.05;  // Default 5% initial infection
     dis["transmissionRate"] = disease.transmissionRate;
-    dis["recoveryRate"] = disease.recoveryRate;
-    dis["mortalityRate"] = disease.mortalityRate;
+    dis["recoveryTime"] = static_cast<int>(1.0 / disease.recoveryRate);  // Convert rate to time steps
+    dis["contactRadius"] = 2.0;  // Default contact radius
     root["disease"] = dis;
     
-    // Environment section
+    // Environment section - match EngineConfigV1 interface
     QJsonObject env;
-    env["resourceRegeneration"] = environment.resourceRegeneration;
+    env["resourceRegenRate"] = environment.resourceRegeneration;
     env["resourceDensity"] = environment.resourceDensity;
+    env["enableSeasons"] = false;  // Not in GUI yet
+    env["enableWeather"] = false;  // Not in GUI yet
     root["environment"] = env;
     
-    // RNG section
+    // RNG section - match EngineConfigV1 interface
     QJsonObject rngObj;
-    rngObj["seed"] = rng.seed;
-    rngObj["independentStreams"] = rng.independentStreams;
+    rngObj["masterSeed"] = QString::number(rng.seed);  // Convert int to string
+    
+    QJsonObject streams;
+    streams["movement"] = true;
+    streams["disease"] = true;
+    streams["births"] = rng.independentStreams;
+    streams["mutation"] = false;
+    streams["llm"] = false;
+    rngObj["streams"] = streams;
+    
     root["rng"] = rngObj;
     
     return root;
