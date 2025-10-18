@@ -293,10 +293,7 @@ void MainWindow::onEngineStarted() {
     
     updateUIState();
     updateStatusBar();
-    if (m_snapshotTimer) {
-        m_snapshotTimer->start();
-    }
-    requestSnapshotAsync(QStringLiteral("full"));
+    // Don't start timer or request snapshot yet - wait for Running state
 }
 
 void MainWindow::onEngineStopped() {
@@ -329,9 +326,15 @@ void MainWindow::onEngineError(const QString& error) {
 }
 
 void MainWindow::onEngineStateChanged(EngineState state) {
-    if (state != EngineState::Running && m_snapshotTimer) {
+    // Handle snapshot timer based on state
+    if (state == EngineState::Running && m_snapshotTimer) {
+        // Engine is now fully initialized and running - start periodic snapshots
+        m_snapshotTimer->start();
+        requestSnapshotAsync(QStringLiteral("full"));
+    } else if (state != EngineState::Running && m_snapshotTimer) {
         m_snapshotTimer->stop();
     }
+    
     updateUIState();
     updateStatusBar();
     
