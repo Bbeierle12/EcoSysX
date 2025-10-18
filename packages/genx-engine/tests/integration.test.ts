@@ -5,6 +5,9 @@ import { AgentState, EnvironmentState, Snapshot, EngineConfigV1 } from '../src/t
 
 const PROVIDER_IMAGE = process.env.PROVIDER_IMAGE || 'genx-test-sidecar:latest';
 const TEST_TIMEOUT = parseInt(process.env.TEST_TIMEOUT || '30000');
+const RUN_PROVIDER_TESTS = process.env.RUN_PROVIDER_TESTS === '1';
+const describeEachProvider = RUN_PROVIDER_TESTS ? describe.each : describe.skip.each;
+const describeProviders = RUN_PROVIDER_TESTS ? describe : describe.skip;
 
 // Test configuration for each provider
 const PROVIDER_CONFIGS = {
@@ -76,7 +79,7 @@ function createEngineConfig(provider: ProviderName): EngineConfigV1 {
   };
 }
 
-describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests - %s', (provider: ProviderName) => {
+describeEachProvider(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests - %s', (provider: ProviderName) => {
   let engine: GenesisEngine;
   
   beforeEach(async () => {
@@ -292,7 +295,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
 });
 
 // Cross-provider comparison tests
-describe('Cross-Provider Validation', () => {
+describeProviders('Cross-Provider Validation', () => {
   test('all providers should produce comparable outputs', async () => {
     const results: Record<string, Snapshot[]> = {};
 

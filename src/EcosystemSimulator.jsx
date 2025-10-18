@@ -245,7 +245,7 @@ class SocialMemory {
       timestamp: Date.now()
     });
     
-    console.log(`Trust update: ${agentId} ${oldTrust.toFixed(2)} → ${memory.trust.toFixed(2)} (${reason})`);
+    console.log(`Trust update: ${agentId} ${oldTrust.toFixed(2)} -> ${memory.trust.toFixed(2)} (${reason})`);
   }
 
   getTrust(agentId) {
@@ -3783,9 +3783,9 @@ class CausalAgent extends Agent {
       const helpDecayed = initialHelpCount - this.helpRequests.length;
       
       console.log(`🧠 Agent ${this.id} Social Info Decay [Step ${currentStep}]: ` +
-        `Resources: ${initialResourceCount}→${this.knownResourceLocations.length} (-${resourceDecayed}), ` +
-        `Dangers: ${initialDangerCount}→${this.dangerZones.length} (-${dangerDecayed}), ` +
-        `Help: ${initialHelpCount}→${this.helpRequests.length} (-${helpDecayed})`
+        `Resources: ${initialResourceCount}->${this.knownResourceLocations.length} (-${resourceDecayed}), ` +
+        `Dangers: ${initialDangerCount}->${this.dangerZones.length} (-${dangerDecayed}), ` +
+        `Help: ${initialHelpCount}->${this.helpRequests.length} (-${helpDecayed})`
       );
     }
   }
@@ -7799,7 +7799,7 @@ const EcosystemSimulator = () => {
             <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
             <p>• <strong className="text-red-300">Red agents:</strong> Infected (spreading disease)</p>
             <p>• <strong className="text-green-300">Green cubes:</strong> Resources to collect</p>
-            <p className="text-purple-300 mt-1">� Analytics: Event-driven windows every 100 steps, checkpoints every 1000</p>
+            <p className="text-purple-300 mt-1">Analytics: Event-driven windows every 100 steps, checkpoints every 1000</p>
           </div>
             </>
           )}

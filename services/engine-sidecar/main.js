@@ -128,7 +128,24 @@ class GUISidecar {
     const { config, provider = 'mesa' } = data;
     
     // Use provided config or create default
-    const engineConfig = config || createDefaultConfig();
+    // Handle cases where config is provided but incomplete
+    let engineConfig;
+    if (!config || typeof config !== 'object' || !config.schema) {
+      this.log('info', 'No valid config provided, using default configuration');
+      engineConfig = createDefaultConfig();
+    } else {
+      // Merge with defaults to fill in any missing fields
+      const defaults = createDefaultConfig();
+      engineConfig = {
+        schema: config.schema || defaults.schema,
+        simulation: { ...defaults.simulation, ...(config.simulation || {}) },
+        agents: { ...defaults.agents, ...(config.agents || {}) },
+        disease: { ...defaults.disease, ...(config.disease || {}) },
+        environment: { ...defaults.environment, ...(config.environment || {}) },
+        rng: { ...defaults.rng, ...(config.rng || {}) }
+      };
+      this.log('info', 'Using provided config merged with defaults');
+    }
     
     this.log('info', `Initializing with ${provider} provider...`);
     

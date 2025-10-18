@@ -1,10 +1,13 @@
 // Determinism Tests for Genesis Engine Providers
-import { test, expect, describe, beforeEach, afterEach } from 'vitest';
+import { test, expect, describe } from 'vitest';
 import { GenesisEngine } from '../src/engine.js';
 import { Snapshot, EngineConfigV1 } from '../src/types.js';
 
 const PROVIDER_IMAGE = process.env.PROVIDER_IMAGE || 'genx-test-sidecar:latest';
 const TEST_TIMEOUT = parseInt(process.env.TEST_TIMEOUT || '60000');
+const RUN_PROVIDER_TESTS = process.env.RUN_PROVIDER_TESTS === '1';
+const describeEachProvider = RUN_PROVIDER_TESTS ? describe.each : describe.skip.each;
+const describeProviders = RUN_PROVIDER_TESTS ? describe : describe.skip;
 
 // Standard test configuration for determinism validation
 const DETERMINISM_CONFIG: EngineConfigV1 = {
@@ -48,7 +51,7 @@ const DETERMINISM_CONFIG: EngineConfigV1 = {
   }
 };
 
-describe.each(['mesa', 'agents', 'mason'] as const)('Determinism Tests - %s', (provider) => {
+describeEachProvider(['mesa', 'agents', 'mason'] as const)('Determinism Tests - %s', (provider) => {
   test(`should produce identical runs with same seed for ${provider}`, async () => {
     const snapshots1: Snapshot[] = [];
     const snapshots2: Snapshot[] = [];
@@ -329,7 +332,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Determinism Tests - %s', (p
 });
 
 // Cross-provider determinism comparison
-describe('Cross-Provider Determinism', () => {
+describeProviders('Cross-Provider Determinism', () => {
   test('providers should have different but internally consistent behavior', async () => {
     const providerResults: Record<string, Snapshot[]> = {};
     

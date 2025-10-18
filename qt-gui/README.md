@@ -16,7 +16,7 @@ All code written, tested, and documented. Ready to build once compiler and Qt ar
 - ✅ [Verification Checklist](PHASE_2_VERIFICATION.md) - Build & test guide
 - 🚀 [Sprint 1 Quick Reference](SPRINT_1_QUICK_REF.md) - Core components API
 - 📊 [Sprint 2 Quick Reference](SPRINT_2_QUICK_REF.md) - Visualization API
-- � [Build Status](BUILD_STATUS.md) - Environment setup guide
+- [Build Status](BUILD_STATUS.md) - Environment setup guide
 
 ---
 

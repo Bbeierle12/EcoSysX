@@ -71,7 +71,7 @@ This plan inventories current tests, identifies gaps, and defines a phased strat
 - Mason Sidecar Java: No tests; add JUnit and verify provider API contract.
 - Agents Sidecar Julia: No tests; add `@testset` coverage for API surface.
 - Web Frontend: No tests; add Vitest + RTL for components and Playwright smoke flows.
-- Encoding artifacts: Remove stray glyphs (�) in several scripts/docs to keep logs clean.
+- Encoding artifacts: Remove stray glyphs (replacement-character artifacts) in several scripts/docs to keep logs clean.
 
 ## Strategy by Layer
 
@@ -174,4 +174,3 @@ Phase 5 — Perf/Regression (ongoing)
 ---
 
 Track progress via PRs that close the checkbox items above, and update this plan as we land each phase.
-
