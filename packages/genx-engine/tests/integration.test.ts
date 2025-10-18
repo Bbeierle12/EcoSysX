@@ -119,7 +119,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
     
     await engine.start(config, {
       provider: provider as any,
-      sidecarImages: { [$provider]: PROVIDER_IMAGE }
+      sidecarImages: { [provider]: PROVIDER_IMAGE }
     });
 
     const initialState = await engine.snapshot();
@@ -155,7 +155,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
     
     await engine.start(config, {
       provider: provider as any,
-      sidecarImages: { [$provider]: PROVIDER_IMAGE }
+      sidecarImages: { [provider]: PROVIDER_IMAGE }
     });
 
     const initialState = await engine.snapshot('full');
@@ -178,7 +178,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
     
     await engine.start(config, {
       provider: provider as any,
-      sidecarImages: { [$provider]: PROVIDER_IMAGE }
+      sidecarImages: { [provider]: PROVIDER_IMAGE }
     });
 
     const states: Snapshot[] = [];
@@ -225,7 +225,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
     // Initialize and run for a few steps
     await engine.start(config, {
       provider: provider as any,
-      sidecarImages: { [$provider]: PROVIDER_IMAGE }
+      sidecarImages: { [provider]: PROVIDER_IMAGE }
     });
 
     await engine.step();
@@ -281,7 +281,7 @@ describe.each(['mesa', 'agents', 'mason'] as const)('Provider Integration Tests 
     // Test with invalid configuration
     await expect(engine.start(invalidConfig, {
       provider: provider as any,
-      sidecarImages: { [$provider]: PROVIDER_IMAGE }
+      sidecarImages: { [provider]: PROVIDER_IMAGE }
     })).rejects.toThrow();
 
     // Test step without initialization
@@ -304,7 +304,7 @@ describe('Cross-Provider Validation', () => {
       try {
         await engine.start(config, {
           provider: provider as any,
-          sidecarImages: { [$provider]: PROVIDER_IMAGE }
+          sidecarImages: { [provider]: PROVIDER_IMAGE }
         });
 
         const steps: Snapshot[] = [];
