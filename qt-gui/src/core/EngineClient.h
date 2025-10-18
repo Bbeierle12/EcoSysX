@@ -267,7 +267,7 @@ private:
     QString m_lineBuffer;             ///< Buffer for incomplete lines
     int m_currentTick;                ///< Current simulation tick
     QTimer* m_startupTimer;           ///< Startup timeout timer
-    QString m_defaultProvider = QStringLiteral("mesa"); ///< Default engine provider
+    QString m_defaultProvider = QStringLiteral("mock"); ///< Default engine provider (mock = in-process, no Docker)
     
     static constexpr int STARTUP_TIMEOUT_MS = 5000;  ///< 5 second startup timeout
 };

@@ -29,7 +29,13 @@
       "description": "Debug build with MinGW generator for Windows development",
       "inherits": "dev",
       "generator": "MinGW Makefiles",
-      "binaryDir": "${sourceDir}/build-dev-mingw"
+      "binaryDir": "${sourceDir}/build-dev-mingw",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/mingw_64",
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe"
+      }
     },
     {
       "name": "dev-vs",
@@ -71,7 +77,13 @@
       "displayName": "CI Build (MinGW)",
       "description": "CI build with MinGW Makefiles for Windows CI",
       "inherits": "ci",
-      "generator": "MinGW Makefiles"
+      "generator": "MinGW Makefiles",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.9.3/mingw_64",
+        "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe"
+      }
     },
     {
       "name": "release",
