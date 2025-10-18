@@ -125,7 +125,7 @@ class GUISidecar {
       throw new Error('Simulation already running. Stop current simulation first.');
     }
     
-    const { config, provider = 'mesa' } = data;
+    const { config, provider = 'mock' } = data;  // Changed default from 'mesa' to 'mock'
     
     // Use provided config or create default
     // Handle cases where config is provided but incomplete

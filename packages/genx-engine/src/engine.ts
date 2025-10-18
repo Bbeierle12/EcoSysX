@@ -2,6 +2,7 @@ import { Engine, EngineOptions, EngineConfigV1, Snapshot, ProviderInfo } from '.
 import { MesaProvider } from './providers/mesa.js';
 import { AgentsProvider } from './providers/agents.js';
 import { MasonProvider } from './providers/mason.js';
+import { MockProvider } from './providers/mock.js';
 import { EngineProvider } from './types.js';
 import EventEmitter from 'eventemitter3';
 
@@ -226,8 +227,9 @@ export class GenesisEngine extends EventEmitter implements Engine {
         return new AgentsProvider();
       case 'mason':
         return new MasonProvider();
+      case 'mock':
       case 'internal':
-        throw new Error('Internal provider not yet implemented');
+        return new MockProvider();
       default:
         throw new Error(`Unknown provider type: ${providerType}`);
     }
