@@ -184,7 +184,7 @@ private:
 
 private:
     // Core components
-    EngineClient* m_engineClient;    // stdio-based (legacy)
+    EngineClient* m_engineClient;    // stdio-based (legacy, deprecated)
     EngineInterface* m_engineInterface;  // WebSocket-based (new)
     QThread* m_engineThread;
     Configuration m_currentConfig;
@@ -192,6 +192,7 @@ private:
     bool m_hasUnsavedChanges;
     int m_currentStep;
     bool m_useWebSocket;  // Toggle between stdio and WebSocket
+    EngineState m_currentState;  // Track current engine state for UI updates
     
     // UI components
     VisualizationWidget* m_visualizationWidget;

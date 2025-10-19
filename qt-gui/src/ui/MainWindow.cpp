@@ -28,6 +28,7 @@ MainWindow::MainWindow(QWidget* parent)
     , m_hasUnsavedChanges(false)
     , m_currentStep(0)
     , m_useWebSocket(true)  // Default to WebSocket mode
+    , m_currentState(EngineState::Idle)  // Initialize engine state
 {
     setWindowTitle("EcoSysX - Qt GUI [WebSocket Mode]");
     setWindowIcon(QIcon(":/icons/icons/app.svg"));
@@ -44,13 +45,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_visualizationWidget = new VisualizationWidget();
     setCentralWidget(m_visualizationWidget);
     
-    // Snapshot timer for periodic updates
+    // Snapshot timer for periodic updates via WebSocket
     m_snapshotTimer = new QTimer(this);
     m_snapshotTimer->setInterval(1000);
     connect(m_snapshotTimer, &QTimer::timeout, this, [this]() {
-        if (m_engineClient && m_engineClient->isRunning()) {
-            requestSnapshotAsync(QStringLiteral("metrics"));
-        }
+        // Request snapshot via WebSocket
+        m_engineInterface->requestSnapshot("full");
     });
     
     // Create engine client in worker thread
@@ -83,56 +83,45 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_configPanel, &ConfigPanel::dirtyStateChanged,
             this, &MainWindow::onConfigDirtyStateChanged);
     
-    // Connect engine control methods via QMetaObject (thread-safe)
+    // Connect engine control methods via WebSocket
     connect(m_startAction, &QAction::triggered, [this]() {
         m_logPanel->logInfo("User initiated: Start simulation");
         
-        QMetaObject::invokeMethod(m_engineClient, [this]() {
-            // Idempotent start/init sequence
-            m_engineClient->start();
-            
-            // Send init with current config (idempotent - will skip if already initialized)
-            if (m_currentConfig.validate()) {
-                m_engineClient->sendInit(m_currentConfig.toJson());
-            } else {
-                QStringList errors;
-                m_currentConfig.validate(&errors);
-                QString errorMsg = QString("Configuration invalid: %1").arg(errors.join("; "));
-                QMetaObject::invokeMethod(this, [this, errorMsg]() {
-                    m_logPanel->logError(errorMsg);
-                }, Qt::QueuedConnection);
-            }
-        });
+        // Validate configuration
+        if (!m_currentConfig.validate()) {
+            QStringList errors;
+            m_currentConfig.validate(&errors);
+            QString errorMsg = QString("Configuration invalid: %1").arg(errors.join("; "));
+            m_logPanel->logError(errorMsg);
+            QMessageBox::warning(this, "Invalid Configuration", errorMsg);
+            return;
+        }
+        
+        // Start simulation via WebSocket
+        m_engineInterface->startSimulation(m_currentConfig.toJson());
     });
     
     connect(m_stopAction, &QAction::triggered, [this]() {
         m_logPanel->logInfo("User initiated: Stop simulation");
-        QMetaObject::invokeMethod(m_engineClient, &EngineClient::stop);
+        m_engineInterface->stopSimulation();
     });
     
     connect(m_stepAction, &QAction::triggered, [this]() {
         m_logPanel->logInfo("User initiated: Step simulation");
-        QMetaObject::invokeMethod(m_engineClient, [this]() {
-            m_engineClient->sendStep(1);
-        });
+        m_engineInterface->stepSimulation(1);
     });
     
     connect(m_resetAction, &QAction::triggered, [this]() {
         m_logPanel->logInfo("User initiated: Reset simulation");
         
-        QMetaObject::invokeMethod(m_engineClient, [this]() {
-            // Stop current simulation
-            m_engineClient->stop();
-            
-            // Wait a moment for clean stop, then restart
-            QTimer::singleShot(500, m_engineClient, [this]() {
-                m_engineClient->start();
-                
-                // Re-initialize with current config
-                if (m_currentConfig.validate()) {
-                    m_engineClient->sendInit(m_currentConfig.toJson());
-                }
-            });
+        // Stop current simulation, then restart
+        m_engineInterface->stopSimulation();
+        
+        // Wait for clean stop, then restart with current config
+        QTimer::singleShot(500, this, [this]() {
+            if (m_currentConfig.validate()) {
+                m_engineInterface->startSimulation(m_currentConfig.toJson());
+            }
         });
     });
     
@@ -378,7 +367,7 @@ void MainWindow::onEngineStateChanged(EngineState state) {
     if (state == EngineState::Running && m_snapshotTimer) {
         // Engine is now fully initialized and running - start periodic snapshots
         m_snapshotTimer->start();
-        requestSnapshotAsync(QStringLiteral("full"));
+        m_engineInterface->requestSnapshot("full");
     } else if (state != EngineState::Running && m_snapshotTimer) {
         m_snapshotTimer->stop();
     }
@@ -636,7 +625,8 @@ void MainWindow::createStatusBar() {
 }
 
 void MainWindow::updateUIState() {
-    EngineState state = m_engineClient->state();
+    // Use tracked state instead of querying EngineClient
+    EngineState state = m_currentState;
     
     // Enable/disable actions based on state
     bool isIdle = (state == EngineState::Idle || 
@@ -655,7 +645,7 @@ void MainWindow::updateUIState() {
 }
 
 void MainWindow::updateStatusBar() {
-    m_statusLabel->setText(stateToStatusText(m_engineClient->state()));
+    m_statusLabel->setText(stateToStatusText(m_currentState));
     m_stepLabel->setText(QString("Step: %1").arg(m_currentStep));
 }
 
@@ -753,55 +743,48 @@ void MainWindow::onWebSocketError(const QString& error) {
 void MainWindow::onWebSocketStateUpdated(bool running, int tick) {
     m_currentStep = tick;
     
-    if (running) {
-        m_statusLabel->setText("Simulation running");
-    } else {
-        m_statusLabel->setText("Simulation stopped");
-    }
+    // Update tracked state
+    m_currentState = running ? EngineState::Running : EngineState::Stopped;
     
-    m_stepLabel->setText(QString("Tick: %1").arg(tick));
-    
-    // Update UI state
-    m_startAction->setEnabled(!running);
-    m_stopAction->setEnabled(running);
-    m_stepAction->setEnabled(running);
-    m_configPanel->setEnabled(!running);
+    // Update UI based on state
+    updateUIState();
+    updateStatusBar();
 }
 
 void MainWindow::onWebSocketSimulationStarted(int tick, const QString& provider) {
     m_currentStep = tick;
+    m_currentState = EngineState::Running;
+    
     m_logPanel->logInfo(QString("✅ Simulation started (provider: %1)").arg(provider));
-    m_statusLabel->setText(QString("Running (%1)").arg(provider));
-    m_stepLabel->setText(QString("Tick: %1").arg(tick));
     
     // Start snapshot timer for periodic updates
     m_snapshotTimer->start();
     
     // Update UI
-    m_startAction->setEnabled(false);
-    m_stopAction->setEnabled(true);
-    m_stepAction->setEnabled(true);
+    updateUIState();
+    updateStatusBar();
     m_configPanel->setEnabled(false);
 }
 
 void MainWindow::onWebSocketSimulationStopped(int tick) {
     m_currentStep = tick;
+    m_currentState = EngineState::Stopped;
+    
     m_logPanel->logInfo(QString("⏹️ Simulation stopped at tick %1").arg(tick));
-    m_statusLabel->setText("Simulation stopped");
     
     // Stop snapshot timer
     m_snapshotTimer->stop();
     
     // Update UI
-    m_startAction->setEnabled(true);
-    m_stopAction->setEnabled(false);
-    m_stepAction->setEnabled(false);
-    m_configPanel->setEnabled(true);
+    updateUIState();
+    updateStatusBar();
 }
 
 void MainWindow::onWebSocketSimulationStepped(int steps, int tick) {
     m_currentStep = tick;
-    m_stepLabel->setText(QString("Tick: %1").arg(tick));
+    m_currentState = EngineState::Stepping;
+    
+    updateStatusBar();
     
     // Request snapshot after stepping
     m_engineInterface->requestSnapshot("metrics");
