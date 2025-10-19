@@ -97,8 +97,10 @@ MainWindow::MainWindow(QWidget* parent)
             return;
         }
         
-        // Start simulation via WebSocket
-        m_engineInterface->startSimulation(m_currentConfig.toJson());
+        // Start simulation via WebSocket with provider info
+        QJsonObject options;
+        options["provider"] = "internal";  // Use internal Genesis Engine provider
+        m_engineInterface->startSimulation(m_currentConfig.toJson(), options, false);
     });
     
     connect(m_stopAction, &QAction::triggered, [this]() {
@@ -120,7 +122,9 @@ MainWindow::MainWindow(QWidget* parent)
         // Wait for clean stop, then restart with current config
         QTimer::singleShot(500, this, [this]() {
             if (m_currentConfig.validate()) {
-                m_engineInterface->startSimulation(m_currentConfig.toJson());
+                QJsonObject options;
+                options["provider"] = "internal";  // Use internal Genesis Engine provider
+                m_engineInterface->startSimulation(m_currentConfig.toJson(), options, false);
             }
         });
     });
