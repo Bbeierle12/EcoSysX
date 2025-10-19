@@ -276,6 +276,6 @@ private:
     int m_commandId;                  ///< Correlation ID for commands
     
     static constexpr int STARTUP_TIMEOUT_MS = 5000;  ///< 5 second startup timeout
-    static constexpr int GRACEFUL_STOP_TIMEOUT_MS = 2000; ///< Timeout for graceful stop
+    static constexpr int GRACEFUL_STOP_TIMEOUT_MS = 5000; ///< Timeout for graceful stop (Windows needs more time)
     static constexpr int FAST_STOP_TIMEOUT_MS = 100; ///< Fast timeout if never stepped
 };

@@ -114,6 +114,7 @@ class GUISidecar {
       op: 'ping',
       data: {
         status: this.isRunning ? 'running' : 'idle',
+        ready: this.isRunning,  // Explicit ready flag for health checks
         tick: this.currentTick,
         version: '1.0.0'
       }
@@ -243,13 +244,22 @@ class GUISidecar {
     try {
       await this.engine.stop();
       
-      return {
+      const response = {
         success: true,
         op: 'stop',
         data: {
           message: 'Simulation stopped successfully'
         }
       };
+      
+      // Exit the process after sending response and flushing stdout
+      // This ensures Qt client sees clean exit instead of timeout+kill
+      setImmediate(() => {
+        this.log('info', 'Exiting process after clean stop');
+        process.exit(0);
+      });
+      
+      return response;
     } catch (error) {
       this.log('error', `Stop failed: ${error.message}`);
       throw error;

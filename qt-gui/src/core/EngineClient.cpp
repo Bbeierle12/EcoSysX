@@ -323,10 +323,11 @@ void EngineClient::onProcessStarted() {
     emit logMessage(QString("[EVT:%1] Engine process started successfully")
                    .arg(m_commandId));
     
+    // Keep state as Starting until init completes
+    setState(EngineState::Starting);
+    
     // If we have a pending init, send it now
     if (m_initPending && !m_pendingConfig.isEmpty()) {
-        setState(EngineState::Running);
-        
         QJsonObject message;
         message["op"] = "init";
         
@@ -339,8 +340,7 @@ void EngineClient::onProcessStarted() {
                        .arg(m_commandId));
         sendMessage(message);
     } else {
-        // No pending init, just mark as running
-        setState(EngineState::Running);
+        // No pending init - still emit started() so MainWindow can send init
         emit started();
     }
 }
@@ -495,10 +495,8 @@ void EngineClient::handleResponse(const QJsonObject& json) {
     }
     
     if (op == "ping") {
+        // Update tick but don't change state - only init marks us Running
         m_currentTick = data.value("tick").toInt(m_currentTick);
-        if (m_state == EngineState::Starting) {
-            setState(EngineState::Running);
-        }
         emit stepped(m_currentTick);
         return;
     }
@@ -518,6 +516,7 @@ void EngineClient::handleResponse(const QJsonObject& json) {
             emit logMessage(QString("[WARN] Empty run plan: 0 steps scheduled!"));
         }
         
+        // ONLY init marks us as Running - this is the canonical transition
         setState(EngineState::Running);
         emit stepped(m_currentTick);
         emit started();
