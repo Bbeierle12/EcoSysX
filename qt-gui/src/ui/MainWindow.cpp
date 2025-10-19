@@ -83,28 +83,54 @@ MainWindow::MainWindow(QWidget* parent)
     
     // Connect engine control methods via QMetaObject (thread-safe)
     connect(m_startAction, &QAction::triggered, [this]() {
+        m_logPanel->logInfo("User initiated: Start simulation");
+        
         QMetaObject::invokeMethod(m_engineClient, [this]() {
+            // Idempotent start/init sequence
             m_engineClient->start();
-            // Init will be sent when engine emits started() signal
+            
+            // Send init with current config (idempotent - will skip if already initialized)
+            if (m_currentConfig.validate()) {
+                m_engineClient->sendInit(m_currentConfig.toJson());
+            } else {
+                QStringList errors;
+                m_currentConfig.validate(&errors);
+                QString errorMsg = QString("Configuration invalid: %1").arg(errors.join("; "));
+                QMetaObject::invokeMethod(this, [this, errorMsg]() {
+                    m_logPanel->logError(errorMsg);
+                }, Qt::QueuedConnection);
+            }
         });
     });
     
     connect(m_stopAction, &QAction::triggered, [this]() {
+        m_logPanel->logInfo("User initiated: Stop simulation");
         QMetaObject::invokeMethod(m_engineClient, &EngineClient::stop);
     });
     
     connect(m_stepAction, &QAction::triggered, [this]() {
+        m_logPanel->logInfo("User initiated: Step simulation");
         QMetaObject::invokeMethod(m_engineClient, [this]() {
             m_engineClient->sendStep(1);
         });
     });
     
     connect(m_resetAction, &QAction::triggered, [this]() {
+        m_logPanel->logInfo("User initiated: Reset simulation");
+        
         QMetaObject::invokeMethod(m_engineClient, [this]() {
-            m_engineClient->sendStop();
+            // Stop current simulation
             m_engineClient->stop();
-            m_engineClient->start();
-            // Init will be sent when engine emits started() signal
+            
+            // Wait a moment for clean stop, then restart
+            QTimer::singleShot(500, m_engineClient, [this]() {
+                m_engineClient->start();
+                
+                // Re-initialize with current config
+                if (m_currentConfig.validate()) {
+                    m_engineClient->sendInit(m_currentConfig.toJson());
+                }
+            });
         });
     });
     
@@ -279,21 +305,12 @@ void MainWindow::onReset() {
 }
 
 void MainWindow::onEngineStarted() {
-    m_logPanel->logInfo("Engine started successfully");
-    
-    // Now that engine is running, send initialization
-    if (m_currentConfig.validate()) {
-        m_logPanel->logInfo("Sending initialization to engine...");
-        QMetaObject::invokeMethod(m_engineClient, [this]() {
-            m_engineClient->sendInit(m_currentConfig.toJson());
-        });
-    } else {
-        m_logPanel->logWarning("Configuration invalid, cannot initialize engine");
-    }
+    // Engine is now fully initialized and ready
+    m_logPanel->logInfo("Engine initialized and ready");
     
     updateUIState();
     updateStatusBar();
-    // Don't start timer or request snapshot yet - wait for Running state
+    // Don't start timer yet - wait for Running state with actual steps
 }
 
 void MainWindow::onEngineStopped() {

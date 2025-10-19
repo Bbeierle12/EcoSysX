@@ -266,8 +266,16 @@ private:
     QString m_sidecarScript;          ///< Path to sidecar script
     QString m_lineBuffer;             ///< Buffer for incomplete lines
     int m_currentTick;                ///< Current simulation tick
+    int m_lastStepIndex;              ///< Last step executed (-1 = never stepped)
+    int m_plannedSteps;               ///< Total steps planned for run
     QTimer* m_startupTimer;           ///< Startup timeout timer
     QString m_defaultProvider = QStringLiteral("mock"); ///< Default engine provider (mock = in-process, no Docker)
+    bool m_initialized;               ///< Whether engine has been initialized
+    bool m_initPending;               ///< Whether an init operation is in progress
+    QJsonObject m_pendingConfig;      ///< Config to send once process starts
+    int m_commandId;                  ///< Correlation ID for commands
     
     static constexpr int STARTUP_TIMEOUT_MS = 5000;  ///< 5 second startup timeout
+    static constexpr int GRACEFUL_STOP_TIMEOUT_MS = 2000; ///< Timeout for graceful stop
+    static constexpr int FAST_STOP_TIMEOUT_MS = 100; ///< Fast timeout if never stepped
 };
