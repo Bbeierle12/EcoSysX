@@ -47,17 +47,52 @@ void VisualizationWidget::updateAgents(const QJsonObject& snapshot) {
     
     m_agents.clear();
     
-    QJsonArray agentsArray = snapshot["agents"].toArray();
+    // Agents are nested in snapshot.state.agents
+    QJsonObject state = snapshot["state"].toObject();
+    QJsonArray agentsArray = state["agents"].toArray();
+    
+    if (agentsArray.isEmpty()) {
+        // Try direct agents array (fallback for different snapshot formats)
+        agentsArray = snapshot["agents"].toArray();
+    }
+    
     m_agents.reserve(agentsArray.size());
     
     for (const QJsonValue& agentValue : agentsArray) {
         QJsonObject agentObj = agentValue.toObject();
         
         Agent agent;
-        agent.id = agentObj["id"].toInt();
-        agent.x = agentObj["x"].toDouble();
-        agent.y = agentObj["y"].toDouble();
-        agent.state = agentObj["state"].toString().toLower();
+        
+        // Extract ID (could be string or int)
+        QJsonValue idValue = agentObj["id"];
+        if (idValue.isString()) {
+            agent.id = idValue.toString().split('-').last().toInt();
+        } else {
+            agent.id = idValue.toInt();
+        }
+        
+        // Position could be nested {x, y} or flat x/y properties
+        if (agentObj.contains("position")) {
+            QJsonObject pos = agentObj["position"].toObject();
+            agent.x = pos["x"].toDouble();
+            agent.y = pos["y"].toDouble();
+        } else {
+            agent.x = agentObj["x"].toDouble();
+            agent.y = agentObj["y"].toDouble();
+        }
+        
+        // Map sirState (0=S, 1=I, 2=R) to state string
+        int sirState = agentObj["sirState"].toInt(-1);
+        if (sirState == 0) {
+            agent.state = "susceptible";
+        } else if (sirState == 1) {
+            agent.state = "infected";
+        } else if (sirState == 2) {
+            agent.state = "recovered";
+        } else {
+            // Fallback: try direct state property
+            agent.state = agentObj["state"].toString("susceptible").toLower();
+        }
         
         m_agents.append(agent);
     }

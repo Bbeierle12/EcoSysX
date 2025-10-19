@@ -15,6 +15,7 @@ class ConfigPanel;
 class EventLogPanel;
 class MetricsPanel;
 class VisualizationWidget;
+class Visualization3DWidget;  // 3D visualization
 class MetricsChartWidget;
 class QTimer;
 
