@@ -64,7 +64,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_engineClient, &EngineClient::stepped,
             this, [this](int tick) {
                 onEngineStepped(tick, 0);
-                requestSnapshotAsync(QStringLiteral("full"));
+                // Snapshot will be requested by timer or on state change to Running
             }, Qt::QueuedConnection);
     connect(m_engineClient, &EngineClient::errorOccurred,
             this, &MainWindow::onEngineError, Qt::QueuedConnection);
