@@ -23,11 +23,13 @@
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
     , m_engineClient(nullptr)
+    , m_engineInterface(nullptr)
     , m_engineThread(nullptr)
     , m_hasUnsavedChanges(false)
     , m_currentStep(0)
+    , m_useWebSocket(true)  // Default to WebSocket mode
 {
-    setWindowTitle("EcoSysX - Qt GUI");
+    setWindowTitle("EcoSysX - Qt GUI [WebSocket Mode]");
     setWindowIcon(QIcon(":/icons/icons/app.svg"));
     resize(1200, 800);
     
@@ -137,6 +139,34 @@ MainWindow::MainWindow(QWidget* parent)
     // Start engine thread
     m_engineThread->start();
     
+    // Create WebSocket-based engine interface
+    m_engineInterface = new EngineInterface(this);
+    
+    // Connect WebSocket signals
+    connect(m_engineInterface, &EngineInterface::connected,
+            this, &MainWindow::onWebSocketConnected);
+    connect(m_engineInterface, &EngineInterface::disconnected,
+            this, &MainWindow::onWebSocketDisconnected);
+    connect(m_engineInterface, &EngineInterface::errorOccurred,
+            this, &MainWindow::onWebSocketError);
+    connect(m_engineInterface, &EngineInterface::stateUpdated,
+            this, &MainWindow::onWebSocketStateUpdated);
+    connect(m_engineInterface, &EngineInterface::simulationStarted,
+            this, &MainWindow::onWebSocketSimulationStarted);
+    connect(m_engineInterface, &EngineInterface::simulationStopped,
+            this, &MainWindow::onWebSocketSimulationStopped);
+    connect(m_engineInterface, &EngineInterface::simulationStepped,
+            this, &MainWindow::onWebSocketSimulationStepped);
+    connect(m_engineInterface, &EngineInterface::snapshotReceived,
+            this, &MainWindow::onWebSocketSnapshotReceived);
+    connect(m_engineInterface, &EngineInterface::snapshotReceived,
+            m_visualizationWidget, &VisualizationWidget::updateAgents);
+    connect(m_engineInterface, &EngineInterface::logMessage,
+            m_logPanel, &EventLogPanel::logInfo);
+    
+    // Connect to engine server
+    m_engineInterface->connectToEngine("ws://localhost:8765");
+    
     // Load settings
     loadSettings();
     
@@ -145,6 +175,7 @@ MainWindow::MainWindow(QWidget* parent)
     updateStatusBar();
     
     m_logPanel->logInfo("Application started");
+    m_logPanel->logInfo("Connecting to engine server at ws://localhost:8765...");
 }
 
 MainWindow::~MainWindow() {
@@ -695,4 +726,102 @@ void MainWindow::requestSnapshotAsync(const QString& kind) {
             m_engineClient->requestSnapshot(kind);
         }
     }, Qt::QueuedConnection);
+}
+
+// ===========================================================================
+// WebSocket-based EngineInterface slots
+// ===========================================================================
+
+void MainWindow::onWebSocketConnected() {
+    m_logPanel->logInfo("✅ Connected to Genesis Engine via WebSocket");
+    m_statusLabel->setText("Connected to engine server");
+    
+    // Request initial state
+    m_engineInterface->requestState();
+}
+
+void MainWindow::onWebSocketDisconnected() {
+    m_logPanel->logWarning("❌ Disconnected from Genesis Engine");
+    m_statusLabel->setText("Disconnected - attempting to reconnect...");
+}
+
+void MainWindow::onWebSocketError(const QString& error) {
+    m_logPanel->logError(QString("Engine error: %1").arg(error));
+    QMessageBox::warning(this, "Engine Error", error);
+}
+
+void MainWindow::onWebSocketStateUpdated(bool running, int tick) {
+    m_currentStep = tick;
+    
+    if (running) {
+        m_statusLabel->setText("Simulation running");
+    } else {
+        m_statusLabel->setText("Simulation stopped");
+    }
+    
+    m_stepLabel->setText(QString("Tick: %1").arg(tick));
+    
+    // Update UI state
+    m_startAction->setEnabled(!running);
+    m_stopAction->setEnabled(running);
+    m_stepAction->setEnabled(running);
+    m_configPanel->setEnabled(!running);
+}
+
+void MainWindow::onWebSocketSimulationStarted(int tick, const QString& provider) {
+    m_currentStep = tick;
+    m_logPanel->logInfo(QString("✅ Simulation started (provider: %1)").arg(provider));
+    m_statusLabel->setText(QString("Running (%1)").arg(provider));
+    m_stepLabel->setText(QString("Tick: %1").arg(tick));
+    
+    // Start snapshot timer for periodic updates
+    m_snapshotTimer->start();
+    
+    // Update UI
+    m_startAction->setEnabled(false);
+    m_stopAction->setEnabled(true);
+    m_stepAction->setEnabled(true);
+    m_configPanel->setEnabled(false);
+}
+
+void MainWindow::onWebSocketSimulationStopped(int tick) {
+    m_currentStep = tick;
+    m_logPanel->logInfo(QString("⏹️ Simulation stopped at tick %1").arg(tick));
+    m_statusLabel->setText("Simulation stopped");
+    
+    // Stop snapshot timer
+    m_snapshotTimer->stop();
+    
+    // Update UI
+    m_startAction->setEnabled(true);
+    m_stopAction->setEnabled(false);
+    m_stepAction->setEnabled(false);
+    m_configPanel->setEnabled(true);
+}
+
+void MainWindow::onWebSocketSimulationStepped(int steps, int tick) {
+    m_currentStep = tick;
+    m_stepLabel->setText(QString("Tick: %1").arg(tick));
+    
+    // Request snapshot after stepping
+    m_engineInterface->requestSnapshot("metrics");
+}
+
+void MainWindow::onWebSocketSnapshotReceived(const QJsonObject& snapshot) {
+    // Extract metrics and update panels
+    if (snapshot.contains("metrics")) {
+        QJsonObject metrics = snapshot["metrics"].toObject();
+        m_metricsPanel->updateMetrics(metrics);
+        m_chartWidget->addDataPoint(
+            m_currentStep,
+            metrics["pop"].toInt(),
+            metrics["energyMean"].toDouble()
+        );
+    }
+    
+    // Update visualization with agent state data
+    if (snapshot.contains("state") && snapshot["state"].toObject().contains("agents")) {
+        QJsonObject state = snapshot["state"].toObject();
+        m_visualizationWidget->updateAgents(state);
+    }
 }

@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include "../core/EngineClient.h"
+#include "../core/EngineInterface.h"
 #include "../core/Configuration.h"
 
 class QToolBar;
@@ -84,7 +85,7 @@ private slots:
     void onResetZoom();
     void onExportChart();
     
-    // EngineClient signals
+    // EngineClient signals (stdio-based)
     void onEngineStarted();
     void onEngineStopped();
     void onEngineStepped(int currentStep, int totalSteps);
@@ -96,6 +97,16 @@ private slots:
     void onEngineStateChanged(EngineState state);
     void onEngineSnapshotReceived(const QJsonObject& snapshot);
     void onEngineLogMessage(const QString& message);
+    
+    // EngineInterface signals (WebSocket-based)
+    void onWebSocketConnected();
+    void onWebSocketDisconnected();
+    void onWebSocketError(const QString& error);
+    void onWebSocketStateUpdated(bool running, int tick);
+    void onWebSocketSimulationStarted(int tick, const QString& provider);
+    void onWebSocketSimulationStopped(int tick);
+    void onWebSocketSimulationStepped(int steps, int tick);
+    void onWebSocketSnapshotReceived(const QJsonObject& snapshot);
     
     // ConfigPanel signals
     void onConfigurationChanged(const Configuration& config);
@@ -173,12 +184,14 @@ private:
 
 private:
     // Core components
-    EngineClient* m_engineClient;
+    EngineClient* m_engineClient;    // stdio-based (legacy)
+    EngineInterface* m_engineInterface;  // WebSocket-based (new)
     QThread* m_engineThread;
     Configuration m_currentConfig;
     QString m_currentConfigFile;
     bool m_hasUnsavedChanges;
     int m_currentStep;
+    bool m_useWebSocket;  // Toggle between stdio and WebSocket
     
     // UI components
     VisualizationWidget* m_visualizationWidget;
