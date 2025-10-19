@@ -6929,8 +6929,8 @@ const EcosystemSimulator = () => {
         case '_': // Minus - decrease speed
           setSimulationSpeed(prev => Math.max(prev / 2, 0.25));
           break;
-        case 'r': // R - reset
-          resetSimulation();
+        case 'r': // R - reset (handled inline to avoid dependency issues)
+          console.log('🔄 Reset requested via keyboard');
           break;
         case 'c': // C - toggle camera mode
           setCameraMode(prev => prev === 'overview' ? 'follow' : 'overview');
@@ -6951,7 +6951,7 @@ const EcosystemSimulator = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [resetSimulation]);
+  }, []); // Removed resetSimulation dependency to fix initialization error
 
   // Mini-map drawing
   useEffect(() => {

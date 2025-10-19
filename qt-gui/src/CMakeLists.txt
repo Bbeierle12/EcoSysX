@@ -2,6 +2,7 @@
 set(SOURCES
     main.cpp
     core/EngineClient.cpp
+    core/EngineInterface.cpp
     core/Configuration.cpp
     core/SnapshotBuffer.cpp
     ui/MainWindow.cpp
@@ -14,6 +15,7 @@ set(SOURCES
 
 set(HEADERS
     core/EngineClient.h
+    core/EngineInterface.h
     core/Configuration.h
     core/SnapshotBuffer.h
     utils/ValidationUtils.h
@@ -51,6 +53,7 @@ target_link_libraries(ecosysx-gui PRIVATE
     Qt6::Network
     Qt6::Gui
     Qt6::Charts
+    Qt6::WebSockets
 )
 
 # Set target properties
