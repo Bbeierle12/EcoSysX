@@ -812,11 +812,7 @@ void MainWindow::onWebSocketSnapshotReceived(const QJsonObject& snapshot) {
     if (snapshot.contains("metrics")) {
         QJsonObject metrics = snapshot["metrics"].toObject();
         m_metricsPanel->updateMetrics(metrics);
-        m_chartWidget->addDataPoint(
-            m_currentStep,
-            metrics["pop"].toInt(),
-            metrics["energyMean"].toDouble()
-        );
+        m_chartWidget->addDataPoint(m_currentStep, snapshot);
     }
     
     // Update visualization with agent state data

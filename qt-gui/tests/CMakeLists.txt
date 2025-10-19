@@ -11,6 +11,7 @@ function(add_qt_test TEST_NAME TEST_SOURCE)
         Qt6::Widgets
         Qt6::Network
         Qt6::Charts
+        Qt6::WebSockets
     )
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     

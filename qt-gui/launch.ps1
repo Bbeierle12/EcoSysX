@@ -30,6 +30,34 @@ Or open qt-gui\BUILD_SUCCESS_REPORT.md for detailed instructions.
     exit 1
 }
 
+# Set Qt paths in environment
+$qtPath = "C:\Qt\6.9.3\mingw_64\bin"
+$mingwPath = "C:\Qt\Tools\mingw1310_64\bin"
+$env:PATH = "$qtPath;$mingwPath;$env:PATH"
+
 # Launch the application
 Write-Host "🚀 Launching EcoSysX GUI..." -ForegroundColor Cyan
-Start-Process -FilePath (Resolve-Path $exePath) -WorkingDirectory (Split-Path (Resolve-Path $exePath))
+Write-Host "   Qt DLLs: $qtPath" -ForegroundColor Gray
+Write-Host "   MinGW: $mingwPath" -ForegroundColor Gray
+Write-Host ""
+
+# Start the process with updated environment
+$processStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+$processStartInfo.FileName = (Resolve-Path $exePath)
+$processStartInfo.WorkingDirectory = (Split-Path (Resolve-Path $exePath))
+$processStartInfo.UseShellExecute = $true
+
+$process = [System.Diagnostics.Process]::Start($processStartInfo)
+
+if ($process) {
+    Write-Host "✅ EcoSysX GUI launched successfully!" -ForegroundColor Green
+    Write-Host "   Process ID: $($process.Id)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "💡 To connect to the engine server:" -ForegroundColor Yellow
+    Write-Host "   1. Make sure the engine server is running (npm run dev:engine)" -ForegroundColor Gray
+    Write-Host "   2. Check status bar for 'Connected to engine server'" -ForegroundColor Gray
+    Write-Host "   3. Click 'Start' to begin simulation" -ForegroundColor Gray
+} else {
+    Write-Host "❌ Failed to launch GUI" -ForegroundColor Red
+    exit 1
+}
