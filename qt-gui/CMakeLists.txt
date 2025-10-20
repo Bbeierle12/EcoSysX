@@ -22,6 +22,8 @@ find_package(Qt6 REQUIRED COMPONENTS
     Gui
     Charts
     WebSockets
+    OpenGL
+    OpenGLWidgets
     Test
 )
 

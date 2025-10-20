@@ -196,7 +196,8 @@ private:
     EngineState m_currentState;  // Track current engine state for UI updates
     
     // UI components
-    VisualizationWidget* m_visualizationWidget;
+    VisualizationWidget* m_visualizationWidget;  // 2D visualization (legacy)
+    Visualization3DWidget* m_visualization3DWidget;  // 3D visualization (primary)
     ConfigPanel* m_configPanel;
     MetricsPanel* m_metricsPanel;
     EventLogPanel* m_logPanel;

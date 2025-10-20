@@ -3,6 +3,7 @@
 #include "panels/EventLogPanel.h"
 #include "panels/MetricsPanel.h"
 #include "widgets/VisualizationWidget.h"
+#include "widgets/Visualization3DWidget.h"
 #include "widgets/MetricsChartWidget.h"
 #include <QMenuBar>
 #include <QToolBar>
@@ -41,9 +42,13 @@ MainWindow::MainWindow(QWidget* parent)
     createDockWidgets();
     createStatusBar();
     
-    // Sprint 2: Set central widget (2D visualization)
+    // Set central widget - 3D visualization
+    m_visualization3DWidget = new Visualization3DWidget();
+    setCentralWidget(m_visualization3DWidget);
+    
+    // Keep 2D widget for potential fallback (not shown)
     m_visualizationWidget = new VisualizationWidget();
-    setCentralWidget(m_visualizationWidget);
+    m_visualizationWidget->hide();
     
     // Snapshot timer for periodic updates via WebSocket
     m_snapshotTimer = new QTimer(this);
@@ -153,7 +158,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_engineInterface, &EngineInterface::snapshotReceived,
             this, &MainWindow::onWebSocketSnapshotReceived);
     connect(m_engineInterface, &EngineInterface::snapshotReceived,
-            m_visualizationWidget, &VisualizationWidget::updateAgents);
+            m_visualization3DWidget, &Visualization3DWidget::updateAgents);
     connect(m_engineInterface, &EngineInterface::logMessage,
             m_logPanel, &EventLogPanel::logInfo);
     

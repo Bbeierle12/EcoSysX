@@ -10,6 +10,7 @@ set(SOURCES
     ui/panels/EventLogPanel.cpp
     ui/panels/MetricsPanel.cpp
     ui/widgets/VisualizationWidget.cpp
+    ui/widgets/Visualization3DWidget.cpp
     ui/widgets/MetricsChartWidget.cpp
 )
 
@@ -24,6 +25,7 @@ set(HEADERS
     ui/panels/EventLogPanel.h
     ui/panels/MetricsPanel.h
     ui/widgets/VisualizationWidget.h
+    ui/widgets/Visualization3DWidget.h
     ui/widgets/MetricsChartWidget.h
 )
 
@@ -54,6 +56,9 @@ target_link_libraries(ecosysx-gui PRIVATE
     Qt6::Gui
     Qt6::Charts
     Qt6::WebSockets
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
+    opengl32  # Windows OpenGL library
 )
 
 # Set target properties
