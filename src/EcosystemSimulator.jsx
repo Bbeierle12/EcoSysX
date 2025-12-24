@@ -5748,10 +5748,9 @@ const EcosystemSimulator = () => {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [debugLogs, setDebugLogs] = useState([]);
   
-  // Collapsible panel states
+  // UI state
   const [isObserverPanelCollapsed, setIsObserverPanelCollapsed] = useState(false);
-  const [isControlPanelCollapsed, setIsControlPanelCollapsed] = useState(false);
-  const [isAgentDetailsPanelCollapsed, setIsAgentDetailsPanelCollapsed] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   
   // Mini-map state
   const [showMiniMap, setShowMiniMap] = useState(true);
@@ -6938,8 +6937,8 @@ const EcosystemSimulator = () => {
         case 'o': // O - toggle observer panel
           setIsObserverPanelCollapsed(prev => !prev);
           break;
-        case 'p': // P - toggle player/control panel
-          setIsControlPanelCollapsed(prev => !prev);
+        case 'p': // P - toggle settings modal
+          setShowSettingsModal(prev => !prev);
           break;
         case 'm': // M - toggle mini-map
           setShowMiniMap(prev => !prev);
@@ -7444,41 +7443,10 @@ const EcosystemSimulator = () => {
           )}
         </div>
         
-        {/* Control Overlay with Enhanced Player Controls */}
-        <div className="absolute top-4 left-4 bg-black bg-opacity-80 p-4 rounded-lg text-white max-w-md">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xl font-bold">🎮 Ecosystem Player Mode</h2>
-            <button
-              onClick={() => setIsControlPanelCollapsed(!isControlPanelCollapsed)}
-              className="text-gray-300 hover:text-white px-2 py-1 text-sm"
-              title={isControlPanelCollapsed ? "Expand panel" : "Collapse panel"}
-            >
-              {isControlPanelCollapsed ? '▼' : '▲'}
-            </button>
-          </div>
-          {!isControlPanelCollapsed && (
-            <>
-          <p className="text-sm mb-3 text-gray-300">
-            Control your white agent and interact with the ecosystem. Survive, evolve, and influence the simulation.
-          </p>
-          
-          {gameOver ? (
-            <div className="bg-red-900 p-3 rounded mb-3">
-              <h3 className="text-lg font-bold text-red-300">🏁 Game Over</h3>
-              {playerStats ? (
-                <div className="text-sm">
-                  <p>Survival Time: {playerStats.survivalTime} steps</p>
-                  <p>Resources Collected: {playerStats.resourcesCollected}</p>
-                  <p>Agents Helped: {playerStats.agentsHelped}</p>
-                  <p>Survival Rating: {playerStats.survivalRating}/100</p>
-                </div>
-              ) : (
-                <p className="text-sm">Final simulation step: {step}</p>
-              )}
-            </div>
-          ) : null}
-          
-          <div className="space-y-2">
+        {/* Simulation Controls - Clean & Minimal */}
+        <div className="absolute top-16 left-4 bg-black/80 backdrop-blur-sm rounded-xl text-white shadow-lg">
+          {/* Main Controls Row */}
+          <div className="flex items-center gap-2 p-3">
             <button
               onClick={() => {
                 setIsRunning(!isRunning);
@@ -7486,220 +7454,176 @@ const EcosystemSimulator = () => {
                   agent.isActive = !isRunning;
                 });
               }}
-              className={`px-4 py-2 rounded ${isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                isRunning
+                  ? 'bg-red-500 hover:bg-red-600'
+                  : 'bg-green-500 hover:bg-green-600'
+              }`}
             >
-              {isRunning ? '⏸ Pause' : '▶ Start'} Simulation
+              {isRunning ? '⏸ Pause' : '▶ Play'}
             </button>
+
             <button
               onClick={resetSimulation}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded ml-2"
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              title="Reset simulation"
             >
-              🔄 Reset
+              ↻
             </button>
-            <button
-              onClick={() => setCameraMode(cameraMode === 'overview' ? 'follow' : 'overview')}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded ml-2"
-            >
-              📷 {cameraMode === 'overview' ? 'Follow Selected' : 'Overview'}
-            </button>
-            <button
-              onClick={takeScreenshot}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded ml-2"
-              title="Take a screenshot of the current simulation view"
-            >
-              📸 Screenshot
-            </button>
-          </div>
 
-          {/* Speed Controls */}
-          <div className="mt-3 p-3 bg-gray-800 rounded">
-            <h3 className="text-sm font-bold mb-2">⚡ Simulation Speed</h3>
-            <div className="flex gap-2">
-              {[0.25, 0.5, 1, 2, 4, 8].map(speed => (
+            {/* Speed Control */}
+            <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+              {[0.5, 1, 2, 4].map(speed => (
                 <button
                   key={speed}
                   onClick={() => setSimulationSpeed(speed)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    simulationSpeed === speed 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
+                    simulationSpeed === speed
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-400 hover:text-white'
                   }`}
                 >
                   {speed}x
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-400 mt-2">
-              Current: {simulationSpeed}x | {(100 / simulationSpeed).toFixed(0)}ms per step
-            </p>
-          </div>
-          
-          {/* Analysis Controls */}
-          <div className="mt-2 space-y-2">
-            <button
-              onClick={async () => {
-                try {
-                  addDebugLog('INFO', '🔄 Starting EcoSysX Analytics export...');
-                  addDebugLog('INFO', 'Analytics ref check', { hasAnalytics: !!analyticsRef.current });
-                  
-                  if (!analyticsRef.current) {
-                    throw new Error('Analytics system not initialized');
-                  }
-                  
-                  const result = await analyticsRef.current.exportAnalytics();
-                  addDebugLog('INFO', '✅ Export completed successfully', { resultKeys: Object.keys(result) });
-                  alert('✅ Export completed successfully!');
-                  
-                } catch (error) {
-                  addDebugLog('ERROR', '❌ Export failed', {
-                    message: error.message,
-                    stack: error.stack,
-                    name: error.name
-                  });
-                  alert(`Export failed: ${error.message}\n\nCheck Debug Console for full details.`);
-                }
-              }}
-              className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-sm mr-2"
-              title="Export comprehensive EcoSysX logs to Downloads/EcoSysX Analytics folder"
-            >
-              📊 Export to EcoSysX Analytics
-            </button>
-            
-            {/* Folder Selection Controls */}
-            <div className="flex items-center gap-2 mt-2 mb-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const result = await analyticsRef.current?.selectExportFolder();
-                    if (result?.success) {
-                      alert(`✅ Export folder selected: ${result.folder}`);
-                    }
-                  } catch (error) {
-                    console.error('❌ Folder selection failed:', error);
-                    alert(`Folder selection failed: ${error.message}`);
-                  }
-                }}
-                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
-                title="Choose export folder location"
-              >
-                📂 Select Export Folder
-              </button>
-              
-              <span className="text-xs text-green-300">
-                📁 {exportFolderLabel}
-              </span>
-              
-              <button
-                onClick={() => {
-                  analyticsRef.current?.resetExportFolder();
-                }}
-                className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs"
-                title="Reset to default downloads folder"
-              >
-                🔄 Reset
-              </button>
-            </div>
-            <button
-              onClick={exportSimulationState}
-              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-sm mr-2"
-              title="Export full simulation state (detailed snapshot)"
-            >
-              📊 Export Snapshot
-            </button>
-            <button
-              onClick={() => analyticsRef.current?.exportSchemaV1(agents, environment)}
-              className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm mr-2"
-              title="Export compact Schema v1 format with TIME_V1 semantics"
-            >
-              📋 Schema v1
-            </button>
-            <div className="text-xs text-cyan-300 mt-1">
-              Performance: {performanceData.memory}MB RAM, {performanceData.fps} FPS
-            </div>
-            
-            {/* Debug Console */}
-            <div className="mt-3 border-t border-gray-600 pt-3">
-              <button
-                onClick={() => setShowDebugConsole(!showDebugConsole)}
-                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 rounded text-sm mr-2"
-                title="Toggle debug console for error reporting"
-              >
-                🐛 Debug Console ({debugLogs.length})
-              </button>
-              {/* Runtime Debug Settings */}
-              <div className="mt-3 p-2 bg-gray-800 rounded border border-gray-700">
-                <div className="text-xs font-bold text-cyan-300 mb-2">⚙️ Runtime Debug Settings</div>
-                
-                {/* System Metrics Display */}
-                <div className="mb-3 p-2 bg-black rounded border border-gray-600">
-                  <div className="text-xs font-bold text-green-300 mb-1">📊 System Metrics</div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-gray-400">Complexity:</span>
-                      <span className={`ml-1 font-mono ${systemMetrics.complexity > debugSettings.reproductionComplexityThreshold ? 'text-red-300' : 'text-green-300'}`}>
-                        {systemMetrics.complexity}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Reproduction:</span>
-                      <span className={`ml-1 font-mono ${systemMetrics.reproductionSuppressed ? 'text-red-300' : 'text-green-300'}`}>
-                        {systemMetrics.reproductionSuppressed ? '🚫 Suppressed' : '✅ Active'}
-                      </span>
-                    </div>
-                  </div>
-                  {systemMetrics.lastPruneUpdate > 0 && (
-                    <div className="mt-2 pt-2 border-t border-gray-700">
-                      <div className="text-xs text-purple-300 mb-1">🧹 Prune Stats (Last: Step {systemMetrics.lastPruneUpdate})</div>
-                      <div className="text-xs grid grid-cols-3 gap-1">
-                        <div>Known: {systemMetrics.pruneStats.knownAgentsRemoved}</div>
-                        <div>Logs: {systemMetrics.pruneStats.logsCompressed}</div>
-                        <div>Merged: {systemMetrics.pruneStats.duplicatesMerged}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {['maxKnownAgents','maxKnownResources','maxDangerZones','maxHelpRequests','reproductionComplexityThreshold','reproductionHardCap','pruneSummaryInterval'].map(key => (
-                    <label key={key} className="flex flex-col gap-1">
-                      <span className="text-gray-400">{key}</span>
-                      <input
-                        type="number"
-                        className="bg-black border border-gray-600 rounded px-1 py-0.5 text-xs"
-                        value={debugSettings[key]}
-                        onChange={e => {
-                          const val = parseInt(e.target.value, 10) || 0;
-                          setDebugSettings(prev => ({ ...prev, [key]: val }));
-                          if (key === 'maxKnownAgents') {
-                            // Apply to existing agents
-                            agents.forEach(a => { if (a.socialMemory) a.socialMemory.maxKnownAgents = val; });
-                          }
-                          if (['maxKnownResources','maxDangerZones','maxHelpRequests'].includes(key)) {
-                            agents.forEach(a => {
-                              if (a instanceof CausalAgent) {
-                                if (key === 'maxKnownResources') a.maxKnownResources = val;
-                                if (key === 'maxDangerZones') a.maxDangerZones = val;
-                                if (key === 'maxHelpRequests') a.maxHelpRequests = val;
-                              }
-                            });
-                          }
-                          if (key === 'pruneSummaryInterval') {
-                            analyticsRef.current && (analyticsRef.current.pruneSummaryInterval = val);
-                          }
-                        }}
-                      />
-                    </label>
-                  ))}
+            <div className="w-px h-6 bg-gray-600" />
+
+            <button
+              onClick={() => setCameraMode(cameraMode === 'overview' ? 'follow' : 'overview')}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+              title={cameraMode === 'overview' ? 'Follow selected agent' : 'Overview mode'}
+            >
+              {cameraMode === 'overview' ? '👁' : '🎯'}
+            </button>
+
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+              title="Settings & Advanced Options"
+            >
+              ⚙
+            </button>
+          </div>
+
+          {/* Game Over Banner */}
+          {gameOver && (
+            <div className="px-3 pb-3">
+              <div className="bg-red-900/80 p-3 rounded-lg">
+                <div className="font-bold text-red-300">Game Over</div>
+                {playerStats && (
+                  <div className="text-xs text-red-200 mt-1">
+                    Survived {playerStats.survivalTime} steps
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Settings Modal */}
+        {showSettingsModal && (
+          <div
+            className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+            onClick={() => setShowSettingsModal(false)}
+          >
+            <div
+              className="bg-gray-900 rounded-xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto border border-gray-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white">Settings & Tools</h2>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="text-gray-400 hover:text-white text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Export Section */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Export Data</h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        if (!analyticsRef.current) throw new Error('Analytics not initialized');
+                        await analyticsRef.current.exportAnalytics();
+                        alert('Export completed!');
+                      } catch (error) {
+                        alert(`Export failed: ${error.message}`);
+                      }
+                    }}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded-lg text-sm"
+                  >
+                    Export Analytics
+                  </button>
+                  <button
+                    onClick={exportSimulationState}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm"
+                  >
+                    Export Snapshot
+                  </button>
+                  <button
+                    onClick={takeScreenshot}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm"
+                  >
+                    Screenshot
+                  </button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  <label className="flex items-center gap-1 text-xs text-gray-300">
+                <div className="mt-3 flex items-center gap-2 text-sm text-gray-400">
+                  <span>Export to: {exportFolderLabel}</span>
+                  <button
+                    onClick={async () => {
+                      const result = await analyticsRef.current?.selectExportFolder();
+                      if (result?.success) alert(`Folder: ${result.folder}`);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
+
+              {/* LLM Status */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">AI Status</h3>
+                <div className={`p-3 rounded-lg ${
+                  llmConfig.ollamaStatus === 'connected' && llmConfig.enabled
+                    ? 'bg-green-900/50 border border-green-700'
+                    : 'bg-gray-800 border border-gray-700'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">
+                      {llmConfig.ollamaStatus === 'connected' && llmConfig.enabled
+                        ? `Real AI (${llmConfig.currentModel || 'Unknown'})`
+                        : 'Simulated AI'}
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${
+                      llmConfig.ollamaStatus === 'connected' && llmConfig.enabled
+                        ? 'bg-green-400'
+                        : 'bg-gray-500'
+                    }`} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Debug Settings */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Advanced</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <label className="flex items-center gap-2 text-gray-300">
                     <input
                       type="checkbox"
                       checked={debugSettings.adaptiveReproduction}
                       onChange={e => setDebugSettings(prev => ({ ...prev, adaptiveReproduction: e.target.checked }))}
-                    /> Adaptive Reproduction
+                      className="rounded"
+                    />
+                    Adaptive Reproduction
                   </label>
-                  <label className="flex items-center gap-1 text-xs text-gray-300">
+                  <label className="flex items-center gap-2 text-gray-300">
                     <input
                       type="checkbox"
                       checked={debugSettings.logCompression}
@@ -7707,693 +7631,236 @@ const EcosystemSimulator = () => {
                         setDebugSettings(prev => ({ ...prev, logCompression: e.target.checked }));
                         if (analyticsRef.current) analyticsRef.current.compressLogs = e.target.checked;
                       }}
-                    /> Log Compression
+                      className="rounded"
+                    />
+                    Log Compression
                   </label>
                 </div>
-              </div>
-              
-              {showDebugConsole && (
-                <div className="mt-2 bg-black border border-gray-600 rounded p-2 max-h-64 overflow-y-auto">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-gray-300">Debug Console - Last {Math.min(debugLogs.length, 100)} entries</span>
-                    <div className="space-x-1">
-                      <button
-                        onClick={copyDebugLogs}
-                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
-                        title="Copy recent logs to clipboard for sharing"
-                      >
-                        📋 Copy
-                      </button>
-                      <button
-                        onClick={exportDebugLogs}
-                        className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
-                        title="Export full debug logs as JSON file"
-                      >
-                        📄 Export
-                      </button>
-                      <button
-                        onClick={() => setDebugLogs([])}
-                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
-                        title="Clear debug logs"
-                      >
-                        🗑️ Clear
-                      </button>
+
+                <button
+                  onClick={() => setShowDebugConsole(!showDebugConsole)}
+                  className="mt-3 px-3 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-sm"
+                >
+                  Debug Console ({debugLogs.length})
+                </button>
+
+                {showDebugConsole && (
+                  <div className="mt-3 bg-black rounded-lg p-3 max-h-48 overflow-y-auto">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-gray-500">
+                        Complexity: {systemMetrics.complexity} |
+                        Reproduction: {systemMetrics.reproductionSuppressed ? 'Off' : 'On'}
+                      </span>
+                      <div className="flex gap-2">
+                        <button onClick={copyDebugLogs} className="text-xs text-blue-400 hover:text-blue-300">Copy</button>
+                        <button onClick={exportDebugLogs} className="text-xs text-green-400 hover:text-green-300">Export</button>
+                        <button onClick={() => setDebugLogs([])} className="text-xs text-red-400 hover:text-red-300">Clear</button>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="space-y-1 text-xs font-mono">
                     {debugLogs.length === 0 ? (
-                      <div className="text-gray-500 italic">No debug logs yet</div>
+                      <div className="text-gray-500 text-xs">No logs</div>
                     ) : (
-                      debugLogs.slice(0, 50).map((log, index) => (
-                        <div key={index} className={`p-1 rounded ${
-                          log.level === 'ERROR' ? 'bg-red-900 text-red-200' :
-                          log.level === 'WARN' ? 'bg-yellow-900 text-yellow-200' :
-                          'bg-gray-800 text-gray-200'
+                      debugLogs.slice(0, 20).map((log, i) => (
+                        <div key={i} className={`text-xs py-1 ${
+                          log.level === 'ERROR' ? 'text-red-400' : 'text-gray-400'
                         }`}>
-                          <div className="flex justify-between">
-                            <span className="font-bold">[{log.level}] {log.message}</span>
-                            <span className="text-gray-400">Step {log.step}</span>
-                          </div>
-                          {log.data && (
-                            <pre className="mt-1 text-xs text-gray-300 whitespace-pre-wrap">{log.data}</pre>
-                          )}
-                          <div className="text-gray-500 text-xs mt-1">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                          [{log.level}] {log.message}
                         </div>
                       ))
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-purple-300 mt-1">
-              Windows: {analyticsRef.current?.windowHistory?.length || 0} | 
-              Checkpoints: {analyticsRef.current?.checkpoints?.length || 0}
-            </div>
-            <div className={`text-xs mt-1 ${
-              llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
-                ? 'text-green-300' 
-                : llmConfig.ollamaStatus === 'checking' 
-                  ? 'text-yellow-300' 
-                  : 'text-red-300'
-            }`}>
-              🧠 LLM: {(() => {
-                if (llmConfig.ollamaStatus === 'checking') return 'Checking Ollama...';
-                if (llmConfig.ollamaStatus === 'connected' && llmConfig.enabled) {
-                  return `Real AI Active (${llmConfig.currentModel || 'Unknown model'})`;
-                }
-                return 'Simulated Only - Install Ollama + llama3.2 for real AI';
-              })()}
-            </div>
-          </div>
-          
-          <div className="mt-3 text-xs text-gray-400">
-            <p>• <strong>Click Agent:</strong> View reasoning details</p>
-            <p>• <strong>Right Drag:</strong> Rotate camera</p>
-            <p>• <strong>Scroll:</strong> Zoom in/out</p>
-            <p>• <strong>Export to EcoSysX Analytics:</strong> Comprehensive logs and CSV reports exported to your selected folder</p>
-            <p>• <strong>Select Export Folder:</strong> Choose where to save your analytics files (requires supported browser)</p>
-            <p>• <strong>Export Snapshot:</strong> Full current state</p>
-            <p>• <strong>Schema v1:</strong> Compact TIME_V1 format with compressed logging</p>
-            <p>• <strong className="text-yellow-300">Gold agents:</strong> Advanced AI reasoning</p>
-            <p>• <strong className="text-blue-300">Blue agents:</strong> Reinforcement learning</p>
-            <p>• <strong className="text-red-300">Red agents:</strong> Infected (spreading disease)</p>
-            <p>• <strong className="text-green-300">Green cubes:</strong> Resources to collect</p>
-            <p className="text-purple-300 mt-1">Analytics: Event-driven windows every 100 steps, checkpoints every 1000</p>
-          </div>
-            </>
-          )}
-        </div>
-        
-        {/* Agent Details Display */}
-        {selectedAgent && (
-          <div className="absolute top-20 right-4 bg-black bg-opacity-95 p-4 rounded-lg max-w-md border border-yellow-400">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-bold text-yellow-300">
-                🧠 Agent {selectedAgent.id.substring(0, 8)}
-              </h3>
-              <button
-                onClick={() => setIsAgentDetailsPanelCollapsed(!isAgentDetailsPanelCollapsed)}
-                className="text-gray-300 hover:text-white px-2 py-1 text-sm"
-                title={isAgentDetailsPanelCollapsed ? "Expand details" : "Collapse details"}
-              >
-                {isAgentDetailsPanelCollapsed ? '▼' : '▲'}
-              </button>
-            </div>
-            {!isAgentDetailsPanelCollapsed && (
-              <>
-            
-            {/* Basic Info */}
-            <div className="mb-3 p-2 bg-gray-800 rounded">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-gray-400">Personality:</span>
-                  <div className="font-mono text-yellow-200">{selectedAgent.personality}</div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Energy:</span>
-                  <div className="font-mono text-green-300">{selectedAgent.energy}%</div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Age:</span>
-                  <div className="font-mono text-blue-300">{selectedAgent.age}</div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Status:</span>
-                  <div className={`font-mono ${
-                    selectedAgent.status === 'Infected' ? 'text-red-400' :
-                    selectedAgent.status === 'Recovered' ? 'text-green-400' :
-                    'text-blue-400'
-                  }`}>{selectedAgent.status}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* LLM Reasoning Info */}
-            <div className="mb-3 p-2 bg-gray-800 rounded border border-purple-400">
-              <h4 className="text-sm font-semibold text-purple-300 mb-1">
-                {selectedAgent.isRealLLM ? '🤖 Real LLM Reasoning' : '🎭 Simulated Reasoning'}
-              </h4>
-              
-              {selectedAgent.isRealLLM && selectedAgent.llmData && (
-                <div className="mb-2 text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Model:</span>
-                    <span className="font-mono text-cyan-300">{selectedAgent.llmData.model}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Response Time:</span>
-                    <span className="font-mono text-yellow-300">{selectedAgent.llmData.responseTime}ms</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Parsed JSON:</span>
-                    <span className={`font-mono ${
-                      selectedAgent.llmData.parsed ? 'text-green-300' : 'text-orange-300'
-                    }`}>
-                      {selectedAgent.llmData.parsed ? 'Yes' : 'Natural Language'}
-                    </span>
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-gray-400 text-sm">Confidence:</span>
-                <span className="font-mono text-yellow-300">
-                  {Math.round(selectedAgent.confidence * 100)}%
-                </span>
-              </div>
-              
-              <div className="text-sm">
-                <span className="text-gray-400">Decision:</span>
-                <div className="mt-1 p-2 bg-black rounded text-gray-200 text-xs max-h-20 overflow-y-auto">
-                  {selectedAgent.reasoning}
-                </div>
-              </div>
-            </div>
-
-            {/* Social Info */}
-            <div className="mb-3 p-2 bg-gray-800 rounded">
-              <h4 className="text-sm font-semibold text-cyan-300 mb-1">🤝 Social Network</h4>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-gray-400">Known Agents:</span>
-                  <div className="font-mono text-cyan-200">{selectedAgent.knownAgents}</div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Avg Trust:</span>
-                  <div className="font-mono text-green-200">
-                    {Math.round(selectedAgent.avgTrust * 100)}%
-                  </div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Resources:</span>
-                  <div className="font-mono text-yellow-200">{selectedAgent.knownResources}</div>
-                </div>
-                <div>
-                  <span className="text-gray-400">Dangers:</span>
-                  <div className="font-mono text-red-200">{selectedAgent.dangerZones}</div>
-                </div>
-              </div>
-              
-              {/* Alliance Information */}
-              {selectedAgent.alliances && selectedAgent.alliances.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-600">
-                  <div className="text-xs text-green-300 mb-1">Active Alliances ({selectedAgent.alliances.length}):</div>
-                  {selectedAgent.alliances.slice(0, 2).map((alliance, idx) => (
-                    <div key={idx} className="text-xs p-1 bg-black rounded mb-1">
-                      <div className="flex justify-between">
-                        <span className="text-green-300">
-                          {alliance.members?.filter(id => id !== selectedAgent.id)[0]?.substring(0, 8) || 'Unknown'}
-                        </span>
-                        <span className="text-yellow-300">
-                          {Math.round((alliance.strength || 0) * 100)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* Territory Information */}
-              {selectedAgent.territory && (
-                <div className="mt-2 pt-2 border-t border-gray-600">
-                  <div className="text-xs text-purple-300 mb-1">🏴 Territory:</div>
-                  <div className="text-xs p-1 bg-black rounded">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Center:</span>
-                      <span className="font-mono text-purple-200">
-                        ({Math.round(selectedAgent.territory.center?.x || 0)}, {Math.round(selectedAgent.territory.center?.z || 0)})
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Strength:</span>
-                      <span className="font-mono text-purple-200">
-                        {Math.round((selectedAgent.territory.strength || 0) * 100)}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              {/* Reputation Information */}
-              <div className="mt-2 pt-2 border-t border-gray-600">
-                <div className="text-xs text-orange-300 mb-1">Reputation:</div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-gray-400">Trading:</span>
-                    <div className="font-mono text-orange-200">
-                      {Math.round((selectedAgent.tradingReputation || 0.5) * 100)}%
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Helping:</span>
-                    <div className="font-mono text-orange-200">
-                      {Math.round((selectedAgent.helpingReputation || 0.5) * 100)}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent History */}
-            {selectedAgent.history && selectedAgent.history.length > 0 && (
-              <div className="mb-3 p-2 bg-gray-800 rounded">
-                <h4 className="text-sm font-semibold text-orange-300 mb-1">📜 Recent Decisions</h4>
-                <div className="space-y-1 max-h-16 overflow-y-auto">
-                  {selectedAgent.history.slice(-3).reverse().map((decision, idx) => (
-                    <div key={idx} className="text-xs p-1 bg-black rounded">
-                      <div className="flex justify-between">
-                        <span className={`font-mono ${
-                          decision.success ? 'text-green-300' : 'text-red-300'
-                        }`}>
-                          {decision.method === 'real_llm' ? '🤖' : '🎭'}
-                        </span>
-                        <span className="text-gray-400">
-                          {new Date(decision.timestamp).toLocaleTimeString().slice(0, 5)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Social Intelligence & Decision Influence Tracking */}
-            {selectedAgent.influenceAnalysis && (
-              <div className="mb-3 p-2 bg-gray-800 rounded border border-indigo-400">
-                <h4 className="text-sm font-semibold text-indigo-300 mb-2">🧠 Decision Intelligence</h4>
-                
-                {/* Current Decision Influences */}
-                <div className="mb-3">
-                  <div className="text-xs text-gray-400 mb-1">Current Decision Influences:</div>
-                  <div className="space-y-1">
-                    {Object.entries(selectedAgent.influenceAnalysis.currentInfluences).map(([type, value]) => (
-                      <div key={type} className="flex justify-between items-center">
-                        <span className="text-xs text-gray-300 capitalize">{type}:</span>
-                        <div className="flex items-center">
-                          <div className="w-16 h-2 bg-gray-700 rounded mr-2 overflow-hidden">
-                            <div 
-                              className={`h-full ${
-                                type === 'social' ? 'bg-cyan-400' :
-                                type === 'individual' ? 'bg-green-400' :
-                                type === 'environmental' ? 'bg-yellow-400' : 'bg-gray-400'
-                              }`}
-                              style={{ width: `${Math.round(value * 100)}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-mono text-white">
-                            {Math.round(value * 100)}%
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Decision Effectiveness */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-gray-400">Social Decisions:</span>
-                    <div className={`font-mono ${
-                      selectedAgent.influenceAnalysis.socialEffectiveness > 0.6 ? 'text-green-300' :
-                      selectedAgent.influenceAnalysis.socialEffectiveness > 0.4 ? 'text-yellow-300' : 'text-red-300'
-                    }`}>
-                      {Math.round(selectedAgent.influenceAnalysis.socialEffectiveness * 100)}% Success
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Individual:</span>
-                    <div className={`font-mono ${
-                      selectedAgent.influenceAnalysis.individualEffectiveness > 0.6 ? 'text-green-300' :
-                      selectedAgent.influenceAnalysis.individualEffectiveness > 0.4 ? 'text-yellow-300' : 'text-red-300'
-                    }`}>
-                      {Math.round(selectedAgent.influenceAnalysis.individualEffectiveness * 100)}% Success
-                    </div>
-                  </div>
-                </div>
-
-                {/* Overall Metrics */}
-                <div className="mt-2 pt-2 border-t border-gray-600 text-xs">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-gray-400">Adaptability:</span>
-                    <span className={`font-mono ${
-                      selectedAgent.influenceAnalysis.adaptability > 0.6 ? 'text-green-300' :
-                      selectedAgent.influenceAnalysis.adaptability > 0.4 ? 'text-yellow-300' : 'text-red-300'
-                    }`}>
-                      {Math.round(selectedAgent.influenceAnalysis.adaptability * 100)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Total Decisions:</span>
-                    <span className="font-mono text-blue-300">
-                      {selectedAgent.influenceAnalysis.overallMetrics.totalDecisions}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Recent Decision Pattern */}
-                {selectedAgent.influenceAnalysis.recentDecisions && selectedAgent.influenceAnalysis.recentDecisions.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-600">
-                    <div className="text-xs text-gray-400 mb-1">Recent Pattern:</div>
-                    <div className="flex space-x-1">
-                      {selectedAgent.influenceAnalysis.recentDecisions.slice(-10).map((decision, idx) => (
-                        <div 
-                          key={idx}
-                          className={`w-2 h-2 rounded-full ${
-                            decision.sociallyInfluenced ? 'bg-cyan-400' : 'bg-green-400'
-                          } ${decision.success === true ? 'opacity-100' : 
-                              decision.success === false ? 'opacity-40' : 'opacity-70'}`}
-                          title={`${decision.goal} - ${decision.sociallyInfluenced ? 'Social' : 'Individual'} - ${decision.success ? 'Success' : 'Pending/Failed'}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                      <span>🔵 Social</span>
-                      <span>🟢 Individual</span>
-                    </div>
-                  </div>
                 )}
               </div>
-            )}
-              </>
-            )}
-            
-            <button 
-              onClick={() => setSelectedAgent(null)}
-              className="mt-3 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs w-full"
-            >
-              Close
-            </button>
+
+              {/* Keyboard Shortcuts */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Shortcuts</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm text-gray-300">
+                  <div><kbd className="bg-gray-800 px-2 py-0.5 rounded text-xs">Space</kbd> Play/Pause</div>
+                  <div><kbd className="bg-gray-800 px-2 py-0.5 rounded text-xs">R</kbd> Reset</div>
+                  <div><kbd className="bg-gray-800 px-2 py-0.5 rounded text-xs">M</kbd> Mini-map</div>
+                  <div><kbd className="bg-gray-800 px-2 py-0.5 rounded text-xs">?</kbd> Help</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Agent Details - Simplified */}
+        {selectedAgent && (
+          <div className="absolute bottom-4 left-4 bg-black/90 backdrop-blur-sm rounded-xl text-white w-72 shadow-xl border border-gray-700">
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 border-b border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className={`w-3 h-3 rounded-full ${
+                  selectedAgent.status === 'Infected' ? 'bg-red-500' :
+                  selectedAgent.status === 'Recovered' ? 'bg-green-500' : 'bg-blue-500'
+                }`} />
+                <span className="font-mono text-sm">{selectedAgent.id.substring(0, 8)}</span>
+              </div>
+              <button
+                onClick={() => setSelectedAgent(null)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="p-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-gray-500 text-xs">Energy</div>
+                <div className="font-mono text-green-400">{selectedAgent.energy}%</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">Age</div>
+                <div className="font-mono text-blue-400">{selectedAgent.age}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">Personality</div>
+                <div className="text-yellow-400 capitalize">{selectedAgent.personality}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">Confidence</div>
+                <div className="font-mono text-purple-400">{Math.round(selectedAgent.confidence * 100)}%</div>
+              </div>
+            </div>
+
+            {/* Current Reasoning */}
+            <div className="px-3 pb-3">
+              <div className="text-gray-500 text-xs mb-1">Current Decision</div>
+              <div className="text-xs text-gray-300 bg-gray-800 rounded p-2 max-h-16 overflow-y-auto">
+                {selectedAgent.reasoning || 'Thinking...'}
+              </div>
+            </div>
+
+            {/* Social Quick Stats */}
+            <div className="px-3 pb-3 flex gap-4 text-xs text-gray-400">
+              <span>Trust: {Math.round(selectedAgent.avgTrust * 100)}%</span>
+              <span>Allies: {selectedAgent.alliances?.length || 0}</span>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="w-96 bg-gray-800 text-white p-4 overflow-y-auto">
-        <h3 className="text-lg font-bold mb-4">🔬 Scientific Dashboard</h3>
-        
-        <div className="mb-6 p-3 bg-gray-700 rounded border-l-4 border-yellow-400">
-          <h4 className="text-md font-semibold mb-2 text-yellow-300">🧠 AI Agents</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-yellow-400">🟡 Causal Agents:</span>
-              <span className="font-mono">{stats.causalAgents}</span>
+      {/* Simplified Sidebar */}
+      <div className="w-72 bg-gray-900 text-white flex flex-col">
+        {/* Population & Health */}
+        <div className="p-4 border-b border-gray-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-2xl font-bold">{stats.total}</span>
+            <span className="text-gray-400 text-sm">agents</span>
+          </div>
+
+          {/* Health Status Bar */}
+          <div className="h-2 rounded-full bg-gray-700 overflow-hidden flex mb-3">
+            <div
+              className="bg-blue-500 transition-all"
+              style={{ width: `${(stats.susceptible / Math.max(stats.total, 1)) * 100}%` }}
+            />
+            <div
+              className="bg-red-500 transition-all"
+              style={{ width: `${(stats.infected / Math.max(stats.total, 1)) * 100}%` }}
+            />
+            <div
+              className="bg-green-500 transition-all"
+              style={{ width: `${(stats.recovered / Math.max(stats.total, 1)) * 100}%` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div>
+              <div className="text-blue-400 font-mono text-lg">{stats.susceptible}</div>
+              <div className="text-gray-500">Healthy</div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-blue-400">🔵 RL Agents:</span>
-              <span className="font-mono">{stats.rlAgents}</span>
+            <div>
+              <div className="text-red-400 font-mono text-lg">{stats.infected}</div>
+              <div className="text-gray-500">Infected</div>
+            </div>
+            <div>
+              <div className="text-green-400 font-mono text-lg">{stats.recovered}</div>
+              <div className="text-gray-500">Recovered</div>
+            </div>
+          </div>
+
+          {/* Energy & Age */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="bg-gray-800 rounded-lg p-2 text-center">
+              <div className="text-yellow-400 font-mono">{stats.avgEnergy}%</div>
+              <div className="text-gray-500 text-xs">Avg Energy</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-2 text-center">
+              <div className="text-purple-400 font-mono">{stats.avgAge}</div>
+              <div className="text-gray-500 text-xs">Avg Age</div>
             </div>
           </div>
         </div>
 
-        {/* LLM Performance Dashboard */}
-        <div className="mb-6 p-3 bg-gray-700 rounded border-l-4 border-purple-400">
-          <h4 className="text-md font-semibold mb-2 text-purple-300">🤖 LLM Performance</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className={`${
-                llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
-                  ? 'text-green-400' 
-                  : 'text-red-400'
-              }`}>
-                Status:
-              </span>
-              <span className="font-mono text-xs">
-                {llmConfig.ollamaStatus === 'connected' && llmConfig.enabled 
-                  ? 'Real AI' 
-                  : 'Simulated'}
-              </span>
-            </div>
-            {llmConfig.enabled && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-cyan-400">Requests:</span>
-                  <span className="font-mono">{stats.llmStats.totalRequests}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-green-400">Success Rate:</span>
-                  <span className="font-mono">{Math.round(stats.llmStats.successRate * 100)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-yellow-400">Avg Response:</span>
-                  <span className="font-mono">{Math.round(stats.llmStats.avgResponseTime)}ms</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-orange-400">Fallbacks:</span>
-                  <span className="font-mono">{stats.llmStats.fallbackUsed}</span>
-                </div>
-              </>
-            )}
-            <div className="mt-2 pt-2 border-t border-gray-600">
-              <button
-                onClick={() => {
-                  // Update LLM service configuration
-                  const newEndpoint = prompt('Enter Ollama endpoint:', llmConfig.endpoint);
-                  if (newEndpoint && newEndpoint.trim()) {
-                    llmService.updateConfig({ endpoint: newEndpoint.trim() });
-                    setLLMConfig(prev => ({ ...prev, endpoint: newEndpoint.trim() }));
-                    showNotification('🔧 LLM endpoint updated', 'info');
-                  }
-                }}
-                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs mr-2"
-                title="Configure LLM endpoint"
-              >
-                🔧 Config
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    showNotification('🤖 Testing LLM...', 'info');
-                    const testPrompt = llmService.buildEcosystemPrompt(
-                      { personality: 'curious', id: 'test', age: 50, energy: 75, status: 'Susceptible' },
-                      { nearbyAgents: [], nearbyInfected: 0, nearestResourceDistance: 15, nearbyCount: 2 },
-                      []
-                    );
-                    
-                    const result = await llmService.callLLM(testPrompt, { maxTokens: 128 });
-                    const parsed = llmService.parseLLMResponse(result.response);
-                    
-                    showNotification(`✅ LLM Test: ${parsed.action} (${result.responseTime}ms)`, 'success');
-                    console.log('🧪 LLM Test Result:', { result, parsed });
-                  } catch (error) {
-                    showNotification(`❌ LLM Test Failed: ${error.message}`, 'error');
-                    console.error('🧪 LLM Test Error:', error);
-                  }
-                }}
-                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs mr-2"
-                title="Test LLM connection with sample reasoning"
-                disabled={!llmConfig.enabled}
-              >
-                🧪 Test
-              </button>
-              <button
-                onClick={() => {
-                  if (llmService) {
-                    llmService.resetStats();
-                    showNotification('📊 LLM stats reset', 'info');
-                  }
-                }}
-                className="px-2 py-1 bg-gray-600 hover:bg-gray-700 rounded text-xs"
-                title="Reset LLM performance statistics"
-              >
-                🔄 Reset
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6 p-3 bg-gray-700 rounded">
-          <h4 className="text-md font-semibold mb-2 text-blue-300">📊 SIR Disease Model</h4>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-blue-400">🔵 Susceptible:</span>
-              <span className="font-mono">{stats.susceptible}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-red-400">🔴 Infected:</span>
-              <span className="font-mono">{stats.infected}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-green-400">🟢 Recovered:</span>
-              <span className="font-mono">{stats.recovered}</span>
-            </div>
-            <div className="flex justify-between font-bold">
-              <span>👥 Population:</span>
-              <span className="font-mono">{stats.total}</span>
-            </div>
-          </div>
-        </div>
-
+        {/* Population Chart */}
         {populationHistory.length > 1 && (
-          <div className="mb-6 p-3 bg-gray-700 rounded">
-            <h4 className="text-md font-semibold mb-2 text-purple-300">📈 Population Dynamics</h4>
+          <div className="p-4 border-b border-gray-800">
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Population History</div>
             <PopulationChart />
           </div>
         )}
 
-        <div className="mb-6 p-3 bg-gray-700 rounded">
-          <h4 className="text-md font-semibold mb-2 text-yellow-300">🧠 Agent Intelligence</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Avg Age:</span>
-              <span className="font-mono">{stats.avgAge} steps</span>
+        {/* Environment */}
+        <div className="p-4 border-b border-gray-800">
+          <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">Environment</div>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-gray-300">{environment.season}</span>
+            <span className="font-mono text-lg">{Math.round(environment.temperature)}°</span>
+          </div>
+
+          <div className={`inline-block px-2 py-1 rounded text-xs ${
+            environment.climateEvent
+              ? 'bg-red-900 text-red-300'
+              : environment.weather === 'storm' || environment.weather === 'hurricane'
+              ? 'bg-orange-900 text-orange-300'
+              : 'bg-gray-800 text-gray-300'
+          }`}>
+            {environment.climateEvent || environment.weather}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between text-sm">
+            <span className="text-gray-400">Resources</span>
+            <span className="text-green-400 font-mono">{environment.resources.size}</span>
+          </div>
+        </div>
+
+        {/* Agent Types - Compact */}
+        <div className="p-4 border-b border-gray-800">
+          <div className="text-xs text-gray-400 uppercase tracking-wide mb-2">Agent Types</div>
+          <div className="flex gap-4 text-sm">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-yellow-400" />
+              <span className="text-gray-300">{stats.causalAgents}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Avg Energy:</span>
-              <span className="font-mono">{stats.avgEnergy}%</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Learning:</span>
-              <span className="text-green-400">MARL Active</span>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="text-gray-300">{stats.rlAgents}</span>
             </div>
           </div>
         </div>
 
-        <div className="mb-6 p-3 bg-gray-700 rounded">
-          <h4 className="text-md font-semibold mb-2 text-green-300">🌍 Environment</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Season:</span>
-              <span className="capitalize font-mono">{environment.season}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Temperature:</span>
-              <span className="font-mono">{Math.round(environment.temperature)}°C</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Weather:</span>
-              <span className={`capitalize font-mono ${
-                environment.climateEvent ? 'text-red-400 font-bold' : 
-                environment.weather === 'storm' || environment.weather === 'hurricane' ? 'text-orange-400' :
-                'text-green-400'
-              }`}>
-                {environment.climateEvent ? `${environment.climateEvent}!` : environment.weather}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Resources:</span>
-              <span className="font-mono">{environment.resources.size}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Territories:</span>
-              <span className="font-mono">{environment.territories?.size || 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Terrain Features:</span>
-              <span className="font-mono">{environment.terrainFeatures?.size || 0}</span>
-            </div>
-            
-            {/* Terrain Feature Summary */}
-            {environment.terrainFeatures && environment.terrainFeatures.size > 0 && (
-              <div className="mt-2 pt-2 border-t border-gray-600 text-xs">
-                <div className="text-gray-300 mb-1">Terrain Features:</div>
-                <div className="grid grid-cols-2 gap-1">
-                  <div className="flex justify-between">
-                    <span className="text-yellow-300">🏠 Shelters:</span>
-                    <span className="font-mono">{Array.from(environment.terrainFeatures.values()).filter(f => f.type === 'shelter').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-cyan-300">🌿 Oases:</span>
-                    <span className="font-mono">{Array.from(environment.terrainFeatures.values()).filter(f => f.type === 'oasis').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-green-300">⛰️ Hills:</span>
-                    <span className="font-mono">{Array.from(environment.terrainFeatures.values()).filter(f => f.type === 'hill').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-red-300">☢️ Danger:</span>
-                    <span className="font-mono">{Array.from(environment.terrainFeatures.values()).filter(f => f.type === 'contaminated').length}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Environmental Stress Indicators */}
-            {environment.environmentalStress && Object.values(environment.environmentalStress).some(stress => stress > 0.1) && (
-              <div className="mt-2 pt-2 border-t border-gray-600">
-                <div className="text-xs text-red-300">Environmental Stress:</div>
-                {Object.entries(environment.environmentalStress).map(([type, level]) => 
-                  level > 0.1 && (
-                    <div key={type} className="flex justify-between text-xs">
-                      <span className="capitalize">{type.replace('Stress', '')}:</span>
-                      <span className={`font-mono ${level > 0.7 ? 'text-red-400' : 'text-yellow-400'}`}>
-                        {Math.round(level * 100)}%
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Spacer */}
+        <div className="flex-1" />
 
-        {/* Social Systems Dashboard */}
-        <div className="mb-6 p-3 bg-gray-700 rounded border-l-4 border-cyan-400">
-          <h4 className="text-md font-semibold mb-2 text-cyan-300">🤝 Social Systems</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-green-400">Active Alliances:</span>
-              <span className="font-mono">{agents.reduce((count, agent) => 
-                count + (agent instanceof CausalAgent ? agent.alliances?.size || 0 : 0), 0) / 2}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-blue-400">Trade Offers:</span>
-              <span className="font-mono">{agents.reduce((count, agent) => 
-                count + (agent instanceof CausalAgent ? agent.tradeOffers?.length || 0 : 0), 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-orange-400">Help Requests:</span>
-              <span className="font-mono">{agents.reduce((count, agent) => 
-                count + (agent instanceof CausalAgent && agent.currentHelpRequest ? 1 : 0), 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-purple-400">Territorial Claims:</span>
-              <span className="font-mono">{agents.reduce((count, agent) => 
-                count + (agent instanceof CausalAgent && agent.territory ? 1 : 0), 0)}</span>
-            </div>
+        {/* Legend - Bottom */}
+        <div className="p-4 text-xs text-gray-500 border-t border-gray-800">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full bg-yellow-400" />
+            <span>Causal AI</span>
           </div>
-        </div>
-
-        <div className="mb-6 p-3 bg-gray-700 rounded">
-          <h4 className="text-md font-semibold mb-2 text-cyan-300">⚡ Runtime</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Step:</span>
-              <span className="font-mono">{step.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Status:</span>
-              <span className={`font-mono ${isRunning ? 'text-green-400' : 'text-red-400'}`}>
-                {isRunning ? 'EVOLVING' : 'PAUSED'}
-              </span>
-            </div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <span>RL Agents</span>
           </div>
-        </div>
-
-        <div className="text-xs text-gray-400">
-          <h4 className="font-semibold mb-2">🎮 Controls:</h4>
-          <p>• Click to move white player agent</p>
-          <p>• Use player controls to reproduce, scan, help others</p>
-          <p>• Survive and watch AI evolve!</p>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-400" />
+            <span>Resources</span>
+          </div>
         </div>
       </div>
 
