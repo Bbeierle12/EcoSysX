@@ -55,3 +55,16 @@ export type {
 
 // Re-export SensoryInput from neural module for convenience
 export type { SensoryInput } from '../neural/Brain';
+
+// Trophic-aware sensory system
+export {
+  TrophicSensorySystem,
+  DEFAULT_TROPHIC_SENSOR_CONFIG,
+  createTrophicSensorySystem,
+} from './TrophicSensorySystem';
+
+export type {
+  TrophicAgent,
+  TrophicWorldLike,
+  TrophicSensorConfig,
+} from './TrophicSensorySystem';

@@ -45,6 +45,9 @@ export * from './agents';
 // Sensory system
 export * from './sensory';
 
+// Trophic system (emergent predator-prey dynamics)
+export * from './trophic';
+
 // Simulation system
 export * from './simulation';
 
