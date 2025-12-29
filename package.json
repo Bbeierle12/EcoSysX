@@ -1,57 +1,34 @@
 {
-  "name": "ecosysx",
+  "name": "genesisx",
+  "version": "0.1.0",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "concurrently -n \"engine,web\" -c \"green,blue\" \"npm run dev:engine\" \"npm run dev:web\"",
-    "dev:web": "vite",
-    "dev:engine": "cd packages/genx-engine && npm run dev:server",
-    "dev:full": "concurrently -n \"engine,web\" -c \"green,blue\" \"npm run dev:engine\" \"npm run dev:web\"",
-    "build": "vite build",
-    "build:engine": "cd packages/genx-engine && npm run build",
-    "build:all": "npm run build:engine && npm run build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:engine": "cd packages/genx-engine && npm test",
-    "server": "cd packages/genx-engine && npm run server"
+  "description": "GenesisX - Unified Ecosystem Simulator Platform",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   },
-  "dependencies": {
-    "@react-three/drei": "^10.7.6",
-    "@react-three/fiber": "^9.3.0",
-    "@types/d3": "^7.4.3",
-    "@types/three": "^0.180.0",
-    "d3": "^7.9.0",
-    "eventemitter3": "^5.0.1",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "three": "^0.180.0"
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@tailwindcss/postcss": "^4.1.13",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.0.3",
-    "@vitest/coverage-v8": "^3.2.4",
-    "@vitest/ui": "^3.2.4",
-    "autoprefixer": "^10.4.21",
-    "concurrently": "^9.1.0",
-    "eslint": "^9.36.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.20",
-    "globals": "^16.4.0",
-    "happy-dom": "^20.0.5",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.13",
-    "tsx": "^4.21.0",
-    "vite": "^7.1.7",
-    "vitest": "^3.2.4"
-  }
+    "@types/node": "^20.10.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "ecosystem",
+    "simulation",
+    "artificial-life",
+    "evolution",
+    "neural-network",
+    "agent-based-modeling"
+  ],
+  "author": "GenesisX Team",
+  "license": "MIT"
 }
