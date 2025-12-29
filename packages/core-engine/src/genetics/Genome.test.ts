@@ -505,4 +505,91 @@ describe('Genome', () => {
       expect(layers[1].biases).toHaveLength(1);
     });
   });
+
+  // =====================
+  // HAMMING DISTANCE TESTS (REvoSim-style)
+  // =====================
+  describe('hammingDistance', () => {
+    it('should return 0 for identical genomes', () => {
+      const genome1 = new Genome({ size: 10 });
+      const genome2 = new Genome({ size: 10 });
+      for (let i = 0; i < 10; i++) {
+        genome1.setGene(i, 0.5);
+        genome2.setGene(i, 0.5);
+      }
+
+      expect(genome1.hammingDistanceFrom(genome2)).toBe(0);
+    });
+
+    it('should count bit differences correctly', () => {
+      const genome1 = new Genome({ size: 4 });
+      const genome2 = new Genome({ size: 4 });
+
+      // Using threshold 0: positive = 1, negative = 0
+      genome1.setGene(0, 0.5);  // bit: 1
+      genome1.setGene(1, -0.5); // bit: 0
+      genome1.setGene(2, 0.5);  // bit: 1
+      genome1.setGene(3, -0.5); // bit: 0
+
+      genome2.setGene(0, 0.5);  // bit: 1 (same)
+      genome2.setGene(1, 0.5);  // bit: 1 (different)
+      genome2.setGene(2, -0.5); // bit: 0 (different)
+      genome2.setGene(3, -0.5); // bit: 0 (same)
+
+      expect(genome1.hammingDistanceFrom(genome2)).toBe(2);
+    });
+
+    it('should respect custom threshold', () => {
+      const genome1 = new Genome({ size: 4 });
+      const genome2 = new Genome({ size: 4 });
+
+      // With threshold 0.5: >= 0.5 = 1, < 0.5 = 0
+      genome1.setGene(0, 0.6);  // bit: 1
+      genome1.setGene(1, 0.4);  // bit: 0
+      genome1.setGene(2, 0.6);  // bit: 1
+      genome1.setGene(3, 0.4);  // bit: 0
+
+      genome2.setGene(0, 0.6);  // bit: 1 (same)
+      genome2.setGene(1, 0.6);  // bit: 1 (different)
+      genome2.setGene(2, 0.4);  // bit: 0 (different)
+      genome2.setGene(3, 0.4);  // bit: 0 (same)
+
+      expect(genome1.hammingDistanceFrom(genome2, 0.5)).toBe(2);
+    });
+
+    it('should throw error for different size genomes', () => {
+      const genome1 = new Genome({ size: 10 });
+      const genome2 = new Genome({ size: 5 });
+
+      expect(() => genome1.hammingDistanceFrom(genome2)).toThrow();
+    });
+
+    it('should return normalized hamming distance in [0, 1]', () => {
+      const genome1 = new Genome({ size: 10 });
+      const genome2 = new Genome({ size: 10 });
+
+      // All different
+      for (let i = 0; i < 10; i++) {
+        genome1.setGene(i, 0.5);
+        genome2.setGene(i, -0.5);
+      }
+
+      const normalized = genome1.normalizedHammingDistanceFrom(genome2);
+      expect(normalized).toBe(1); // All 10 bits different
+    });
+
+    it('should check breeding compatibility', () => {
+      const genome1 = new Genome({ size: 10 });
+      const genome2 = new Genome({ size: 10 });
+
+      // 3 bits different
+      for (let i = 0; i < 10; i++) {
+        genome1.setGene(i, 0.5);
+        genome2.setGene(i, i < 3 ? -0.5 : 0.5);
+      }
+
+      expect(genome1.canBreedWith(genome2, 5)).toBe(true);  // 3 <= 5
+      expect(genome1.canBreedWith(genome2, 2)).toBe(false); // 3 > 2
+    });
+  });
 });

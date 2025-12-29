@@ -229,6 +229,42 @@ export class Genome {
     return Math.min(1, distance / maxDistance);
   }
 
+  /**
+   * REvoSim-style Hamming distance for reproductive isolation
+   * Converts continuous genes to binary representation using threshold
+   */
+  hammingDistanceFrom(other: Genome, threshold: number = 0): number {
+    if (this._genes.length !== other._genes.length) {
+      throw new Error('Cannot compare genomes of different sizes');
+    }
+
+    let differences = 0;
+    for (let i = 0; i < this._genes.length; i++) {
+      const thisBit = this._genes[i] >= threshold ? 1 : 0;
+      const otherBit = other._genes[i] >= threshold ? 1 : 0;
+      if (thisBit !== otherBit) {
+        differences++;
+      }
+    }
+
+    return differences;
+  }
+
+  /**
+   * Normalized Hamming distance (0-1 range)
+   */
+  normalizedHammingDistanceFrom(other: Genome, threshold: number = 0): number {
+    return this.hammingDistanceFrom(other, threshold) / this._genes.length;
+  }
+
+  /**
+   * REvoSim-style breeding compatibility check
+   * Returns true if genomes can interbreed based on maximum bit difference
+   */
+  canBreedWith(other: Genome, maxBitDifference: number): boolean {
+    return this.hammingDistanceFrom(other) <= maxBitDifference;
+  }
+
   clone(): Genome {
     const cloned = new Genome(
       {

@@ -33,6 +33,12 @@ export * from './genetics';
 // Lineage system
 export * from './lineage';
 
+// Advanced speciation system (gen3sis + REvoSim)
+export * from './speciation';
+
+// Spatial indexing
+export * from './spatial';
+
 // Agent system
 export * from './agents';
 
