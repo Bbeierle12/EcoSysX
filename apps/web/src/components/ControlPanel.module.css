@@ -1,0 +1,98 @@
+.panel {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.state {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tickDisplay {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.tickLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.tickValue {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--color-accent-blue);
+}
+
+.buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  transition: all var(--transition-fast);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--color-border);
+  border-color: var(--color-border-light);
+}
+
+.button:disabled {
+  opacity: 0.4;
+}
+
+.playButton:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: var(--color-accent-green);
+  color: var(--color-accent-green);
+}
+
+.pauseButton:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: var(--color-accent-yellow);
+  color: var(--color-accent-yellow);
+}
+
+.resetButton:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: var(--color-accent-red);
+  color: var(--color-accent-red);
+}

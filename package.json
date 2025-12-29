@@ -1,0 +1,34 @@
+{
+  "name": "genesisx",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GenesisX - Unified Ecosystem Simulator Platform",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "ecosystem",
+    "simulation",
+    "artificial-life",
+    "evolution",
+    "neural-network",
+    "agent-based-modeling"
+  ],
+  "author": "GenesisX Team",
+  "license": "MIT"
+}

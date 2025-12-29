@@ -1,0 +1,76 @@
+{
+  "name": "@genesisx/core-engine",
+  "version": "0.1.0",
+  "description": "Core simulation engine for GenesisX ecosystem simulator",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "import": "./dist/engine/index.mjs",
+      "require": "./dist/engine/index.js"
+    },
+    "./world": {
+      "types": "./dist/world/index.d.ts",
+      "import": "./dist/world/index.mjs",
+      "require": "./dist/world/index.js"
+    },
+    "./species": {
+      "types": "./dist/species/index.d.ts",
+      "import": "./dist/species/index.mjs",
+      "require": "./dist/species/index.js"
+    },
+    "./neural": {
+      "types": "./dist/neural/index.d.ts",
+      "import": "./dist/neural/index.mjs",
+      "require": "./dist/neural/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "import": "./dist/events/index.mjs",
+      "require": "./dist/events/index.js"
+    },
+    "./genetics": {
+      "types": "./dist/genetics/index.d.ts",
+      "import": "./dist/genetics/index.mjs",
+      "require": "./dist/genetics/index.js"
+    },
+    "./lineage": {
+      "types": "./dist/lineage/index.d.ts",
+      "import": "./dist/lineage/index.mjs",
+      "require": "./dist/lineage/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "keywords": [
+    "ecosystem",
+    "simulation",
+    "engine",
+    "neural-network",
+    "evolution"
+  ],
+  "license": "MIT"
+}

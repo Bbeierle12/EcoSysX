@@ -1,0 +1,33 @@
+.chart {
+  width: 100%;
+  display: block;
+  background: transparent;
+}
+
+.chartsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.chartSection {
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+}
+
+.chartTitle {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.emptyState {
+  padding: var(--spacing-lg);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}

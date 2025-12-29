@@ -1,0 +1,118 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: var(--color-border);
+}
+
+.speedButtons {
+  display: flex;
+  gap: 2px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.speedButton {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 3px;
+  transition: all var(--transition-fast);
+}
+
+.speedButton:hover {
+  background: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.speedButton.active {
+  background: var(--color-accent-blue);
+  color: white;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.actionButton:hover:not(:disabled) {
+  background: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.actionButton:disabled {
+  opacity: 0.4;
+}
+
+.exportWrapper {
+  position: relative;
+}
+
+.exportMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--spacing-xs);
+  min-width: 150px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.exportMenu button {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 0.8125rem;
+  text-align: left;
+  background: transparent;
+  color: var(--color-text-primary);
+  border: none;
+  transition: background var(--transition-fast);
+}
+
+.exportMenu button:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.exportMenu button + button {
+  border-top: 1px solid var(--color-border);
+}
