@@ -290,6 +290,31 @@ export class Genome {
     };
   }
 
+  /**
+   * Static factory to create a genome with a specified size
+   */
+  static withSize(
+    size: number,
+    options?: {
+      mutationRate?: number;
+      mutationStrength?: number;
+      initRange?: [number, number];
+      generation?: number;
+    }
+  ): Genome {
+    return new Genome(
+      {
+        size,
+        initRange: options?.initRange ?? [0, 1],
+        generation: options?.generation ?? 0,
+      },
+      {
+        mutationRate: options?.mutationRate ?? DEFAULT_MUTATION_CONFIG.mutationRate,
+        mutationMagnitude: options?.mutationStrength ?? DEFAULT_MUTATION_CONFIG.mutationMagnitude,
+      }
+    );
+  }
+
   static fromJSON(data: {
     id?: string;
     genes: number[];

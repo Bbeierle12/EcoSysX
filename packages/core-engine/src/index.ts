@@ -48,6 +48,12 @@ export * from './sensory';
 // Trophic system (emergent predator-prey dynamics)
 export * from './trophic';
 
+// Morphology system (Karl Sims-style body evolution)
+export * from './morphology';
+
+// Lenia system (Flow-Lenia cellular substrate)
+export * from './lenia';
+
 // Simulation system
 export * from './simulation';
 
